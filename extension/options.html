@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doublage vocal local — options</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="options">
+  <h1>Doublage vocal local — options</h1>
+  <p class="hint">Tout le traitement a lieu sur votre PC. Aucun son, aucun texte et aucune donnée
+  du site visité ne sont envoyés sur Internet par l'extension.</p>
+
+  <div id="msg" class="notice" role="status" aria-live="polite" hidden></div>
+
+  <h2>Serveur local</h2>
+  <div class="field">
+    <label for="serverPort">Port d'écoute (sur 127.0.0.1)</label>
+    <input type="number" id="serverPort" min="1024" max="65535" step="1">
+    <p class="hint">Doit correspondre au port du serveur. Pour le changer côté serveur,
+    modifiez <code>server/config.json</code> ou lancez
+    <code>demarrer-serveur.bat --port 47832</code>.</p>
+  </div>
+  <div class="field">
+    <label for="token">Jeton partagé (facultatif)</label>
+    <input type="password" id="token" autocomplete="off" spellcheck="false">
+    <p class="hint">Sécurité supplémentaire : si vous renseignez <code>auth_token</code> dans
+    <code>server/config.json</code>, saisissez ici la même valeur. Par défaut, le serveur
+    n'accepte déjà que les connexions venant de cette extension, depuis cet ordinateur.</p>
+  </div>
+  <p id="probe" class="hint"></p>
+  <div class="actions">
+    <button type="button" id="testServer">Tester la connexion au serveur</button>
+  </div>
+
+  <h2>Glossaire</h2>
+  <p>Le glossaire sert à préserver les noms de produits et le vocabulaire technique, et à
+  corriger les mots mal reconnus. Une entrée par ligne :</p>
+  <ul class="compact">
+    <li><code>TIBCO | tipco, tibko</code> — terme conservé tel quel ; <code>tipco</code> et
+    <code>tibko</code> sont les formes mal reconnues à corriger.</li>
+    <li><code>shared resource = ressource partagée</code> — traduction imposée.</li>
+    <li><code>fr: conférence =&gt; leçon</code> — remplacement appliqué au texte français.</li>
+    <li><code># …</code> — commentaire.</li>
+  </ul>
+  <p class="hint">Les identifiants, chemins, commandes et noms de méthodes
+  (<code>getCustomerById</code>, <code>C:\tibco\bw\logs</code>) sont déjà préservés
+  automatiquement : il est inutile de les lister.</p>
+  <label for="glossary" class="hint">Glossaire (<span id="count">0</span> entrée(s))</label>
+  <textarea id="glossary" spellcheck="false" aria-describedby="glossaryErrors"></textarea>
+  <div id="glossaryErrors" class="notice error" role="alert" hidden></div>
+  <div class="actions">
+    <button type="button" id="save" class="primary">Enregistrer</button>
+    <button type="button" id="reset">Revenir au glossaire par défaut</button>
+    <span id="savedInfo" class="hint"></span>
+  </div>
+
+  <h2>Confidentialité</h2>
+  <ul class="compact">
+    <li>Le son capté est envoyé au seul serveur local (<code>127.0.0.1</code>) et n'est jamais
+    enregistré sur disque, sauf si vous activez volontairement l'option de débogage du serveur.</li>
+    <li>Les transcriptions et traductions ne sont pas conservées : seule la dernière phrase
+    reste affichée dans la fenêtre de l'extension.</li>
+    <li>L'extension ne lit ni les cookies, ni les identifiants, ni les jetons de session du
+    site visité, et ne demande jamais l'accès au microphone.</li>
+    <li>Seuls vos réglages (volumes, voix, glossaire) sont conservés, dans le stockage local
+    de l'extension.</li>
+  </ul>
+  <div class="actions">
+    <button type="button" id="wipe">Effacer tous les réglages enregistrés</button>
+  </div>
+
+  <script type="module" src="options.js"></script>
+</body>
+</html>

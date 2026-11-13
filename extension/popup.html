@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doublage vocal local</title>
+  <link rel="stylesheet" href="ui.css">
+</head>
+<body class="popup">
+  <header>
+    <h1>Doublage vocal local</h1>
+    <p id="status" class="pill" data-status="pret" role="status" aria-live="polite">
+      <span class="dot" aria-hidden="true"></span><span id="statusText">Prêt</span>
+    </p>
+  </header>
+
+  <div id="alert" class="notice error" role="alert" hidden></div>
+  <div id="warning" class="notice warn" role="status" aria-live="polite" hidden></div>
+  <div id="otherTab" class="notice info" hidden>
+    La traduction est en cours sur un autre onglet.
+    <button type="button" id="showTab" class="link">Afficher cet onglet</button>
+  </div>
+
+  <section class="controls" aria-label="Commandes">
+    <button type="button" id="start" class="primary">Démarrer</button>
+    <button type="button" id="pause" disabled>Pause</button>
+    <button type="button" id="stop" disabled>Arrêter</button>
+  </section>
+
+  <section id="models" aria-label="Chargement des modèles" hidden>
+    <h2>Préparation des moteurs</h2>
+    <div class="model"><label for="pAsr">Reconnaissance vocale <span id="lAsr"></span></label><progress id="pAsr" max="1" value="0"></progress></div>
+    <div class="model"><label for="pMt">Traduction <span id="lMt"></span></label><progress id="pMt" max="1" value="0"></progress></div>
+    <div class="model"><label for="pTts">Voix française <span id="lTts"></span></label><progress id="pTts" max="1" value="0"></progress></div>
+  </section>
+
+  <section aria-label="Mesures" class="metrics">
+    <dl>
+      <div><dt>Retard estimé</dt><dd id="mLag">—</dd></div>
+      <div><dt>Voix en attente</dt><dd id="mQueue">—</dd></div>
+      <div><dt>Charge de calcul</dt><dd id="mLoad">—</dd></div>
+      <div><dt>Son capté</dt><dd><meter id="mLevel" min="0" max="1" low="0.02" value="0" aria-label="Niveau du son capté"></meter></dd></div>
+    </dl>
+    <p id="mExtra" class="hint"></p>
+  </section>
+
+  <section aria-label="Langues et voix">
+    <div class="row two">
+      <label>Langue d'origine
+        <select id="source"><option value="en">Anglais</option></select>
+      </label>
+      <label>Langue de la voix
+        <select id="target"><option value="fr">Français</option></select>
+      </label>
+    </div>
+    <div class="row voice">
+      <label>Voix française
+        <select id="voice"></select>
+      </label>
+      <button type="button" id="testVoice">Tester</button>
+    </div>
+    <label class="slider">Vitesse de la voix <output id="oRate" for="rate"></output>
+      <input type="range" id="rate" min="0.8" max="1.5" step="0.05">
+    </label>
+  </section>
+
+  <section aria-label="Volumes">
+    <label class="slider">Volume de la voix originale <output id="oOrig" for="originalVolume"></output>
+      <input type="range" id="originalVolume" min="0" max="1" step="0.05">
+    </label>
+    <label class="slider">Volume de la voix française <output id="oFr" for="frenchVolume"></output>
+      <input type="range" id="frenchVolume" min="0" max="1.5" step="0.05">
+    </label>
+    <label class="check"><input type="checkbox" id="duck"> Baisser encore l'original pendant que la voix française parle</label>
+    <p class="hint">Baisser l'original ne gêne pas la traduction : elle écoute le son de l'onglet avant ce réglage.</p>
+  </section>
+
+  <section aria-label="Sous-titres et synchronisation">
+    <label class="check"><input type="checkbox" id="subtitles"> Afficher les sous-titres français sur la page</label>
+    <label class="check sub"><input type="checkbox" id="subtitlesEnglish"> Afficher aussi le texte anglais reconnu</label>
+    <label class="check"><input type="checkbox" id="catchupPause"> Mettre la vidéo en pause quand la voix française prend du retard</label>
+    <p id="mediaInfo" class="hint"></p>
+    <label class="check"><input type="checkbox" id="autoSpeedup"> Accélérer légèrement la voix pour rattraper un retard</label>
+    <div id="udemyBox" hidden>
+      <button type="button" id="udemyGrant" class="link">Autoriser l'extension sur udemy.com (contrôle du lecteur après rechargement)</button>
+    </div>
+  </section>
+
+  <section class="subtitle-preview" aria-label="Dernière phrase traduite">
+    <p id="lastFr" lang="fr"></p>
+    <p id="lastEn" lang="en" class="hint"></p>
+  </section>
+
+  <footer>
+    <span id="serverInfo" class="hint"></span>
+    <a href="options.html" target="_blank" rel="noopener">Options et glossaire</a>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

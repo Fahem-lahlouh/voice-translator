@@ -134,6 +134,7 @@ class Session:
                       "audio_s": 0.0, "asr_s": 0.0, "mt_s": 0.0, "tts_s": 0.0, "voix_s": 0.0}
         self._busy_text = False
         self._busy_tts = False
+        self._phase = "transcription"
         self._threads = [
             threading.Thread(target=self._text_loop, name="vt-texte", daemon=True),
             threading.Thread(target=self._tts_loop, name="vt-voix", daemon=True),
@@ -216,7 +217,7 @@ class Session:
             "silentInput": round(self._silent_s, 1),
             "asrBacklog": round(backlog, 1),
             "ttsQueue": tts_n,
-            "busy": "texte" if self._busy_text else ("voix" if self._busy_tts else ""),
+            "busy": self._phase if self._busy_text else ("voix" if self._busy_tts else ""),
             "rtf": round(rtf, 3),
             "dropped": st["abandonnes"],
             "uncertain": st["incertains"],
@@ -300,6 +301,7 @@ class Session:
             self._carry_epoch = epoch
         st = self.settings
         fast = backlog > self.cfg.fast_mode_backlog_s
+        self._phase = "transcription"
         t = time.perf_counter()
         prompt = (st.glossary.asr_prompt() + " " + self._context[-200:]).strip()
         res = eng.recognizer.transcribe(seg.audio, prompt=prompt, fast=fast, language=st.source)
@@ -346,6 +348,7 @@ class Session:
                              sentences=None, fast=False) -> None:
         st = self.settings
         sentences = sentences or split_sentences(text)
+        self._phase = "traduction"
         t = time.perf_counter()
         fr_parts, notes = [], []
         for s in sentences:

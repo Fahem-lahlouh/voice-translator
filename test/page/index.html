@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <title>Page de test — doublage vocal local</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 760px; margin: 24px auto; padding: 0 16px; }
+    video { width: 100%; background: #111; border-radius: 8px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; margin: 12px 0; }
+    button { font: inherit; padding: 6px 12px; }
+    code { background: #eee; padding: 1px 5px; border-radius: 4px; }
+    #log { font: 12px/1.4 ui-monospace, monospace; background: #f6f8fa; padding: 8px; border-radius: 6px;
+           max-height: 180px; overflow: auto; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Page de test du doublage vocal local</h1>
+  <p>Cette page rejoue un extrait anglais sans aucun sous-titre, afin de vérifier que la
+  traduction ne dépend pas de la présence de sous-titres.</p>
+
+  <video id="v" controls preload="auto" playsinline
+         poster="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='120'%3E%3Crect width='100%25' height='100%25' fill='%23111'/%3E%3Ctext x='50%25' y='55%25' fill='%23ddd' font-family='sans-serif' font-size='20' text-anchor='middle'%3EExtrait de test (audio seul)%3C/text%3E%3C/svg%3E">
+    <source id="src" src="../audio/tibco_demo_en.ogg" type="audio/ogg">
+  </video>
+
+  <div class="bar">
+    <button id="play">Lecture</button>
+    <button id="pause">Pause</button>
+    <button id="back">Reculer de 20 s</button>
+    <button id="fwd">Avancer de 20 s</button>
+    <button id="fast">Vitesse × 1,25</button>
+    <button id="normal">Vitesse × 1</button>
+    <button id="switch">Changer d'extrait (simule un changement de leçon)</button>
+    <button id="silence">Silence de 15 s</button>
+  </div>
+
+  <p>Extrait en cours : <code id="now">tibco_demo_en.ogg</code> —
+  position <code id="pos">0,0</code> s, vitesse <code id="rate">1</code>×</p>
+
+  <h2>Journal</h2>
+  <div id="log"></div>
+
+  <script src="page.js"></script>
+</body>
+</html>

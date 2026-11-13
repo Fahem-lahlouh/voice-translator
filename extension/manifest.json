@@ -1,0 +1,49 @@
+{
+  "manifest_version": 3,
+  "name": "Doublage vocal local (anglais → français)",
+  "short_name": "Doublage local",
+  "version": "0.1.0",
+  "description": "Écoute le son d'un onglet, le traduit et le lit en français. Tout le traitement est effectué sur votre PC, par un serveur local.",
+  "minimum_chrome_version": "116",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAwfHBtAIqhH8Tc7NaomxFhh3VkBxn1VcK+xLrha3g3jsi9Dx5sZNuEvq0yLgfPbiGL4vJL6AtY4Z0V3tbRRJAdeZqeBQGMmkfkTw9eqYgcou8dbVhFmkww9kbkyD30PoWudx0tQjKVwFW8tdhPsIiqqh0UrppZ+K8T6Yd/jGOsuQWSCM57V/FMRdxScaGk2e6oQE4KeOotg36RHRiow8OglYxrGEcw0XcxGrxkC7qI3wNySx8YVCKu2kS8kPSnK1IWPOZz/hX3Zj2C0k9YdMdFkWASCEOM1yMOtAKTkfSjici8OylXeeHRVE/QDzKhsYEYBwa/x0ixLBhtNi/JiHWVQIDAQAB",
+  "permissions": [
+    "activeTab",
+    "tabCapture",
+    "offscreen",
+    "scripting",
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "https://www.udemy.com/*",
+    "https://*.udemy.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Doublage vocal local",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+Y",
+        "mac": "Command+Shift+Y"
+      },
+      "description": "Ouvrir la fenêtre du doublage vocal pour l'onglet affiché"
+    }
+  },
+  "options_page": "options.html",
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
