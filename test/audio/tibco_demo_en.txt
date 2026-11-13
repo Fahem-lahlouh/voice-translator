@@ -1,0 +1,11 @@
+Welcome back. In this lecture, we are going to create our first process in TIBCO BusinessWorks.
+Open TIBCO Business Studio, and in the Project Explorer, right-click on the package and select New, then BusinessWorks Process.
+Give it a name, for example GetCustomer, and click Finish.
+Now, from the palette on the right, drag the HTTP Receiver onto the canvas. This is our process starter.
+Every time a request comes in, the engine creates a new job and runs this process.
+Next, we need a JDBC Query activity to read the customer from the database.
+It uses a shared resource called JDBC Connection, which you configure in the module properties.
+In the input tab, map the customer ID from the request to the query parameter.
+If the query fails, the activity throws a JDBC exception, so let's add a catch block to handle the error.
+Finally, save the process, build the EAR file, and deploy it to the AppNode.
+In the next lecture, we will test the service and look at the log file.

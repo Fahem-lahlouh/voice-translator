@@ -1,0 +1,19 @@
+[
+ { "src": "TIBCO", "dst": "", "aliases": [  "tipco",  "tibko",  "tibco's",  "tico",  "tipko",  "tib co",  "tip co",  "tickle" ] },
+ { "src": "BusinessWorks", "dst": "", "aliases": [  "business works",  "business work",  "businessworks" ] },
+ { "src": "Business Studio", "dst": "", "aliases": [] },
+ { "src": "BusinessEvents", "dst": "", "aliases": [  "business events" ] },
+ { "src": "ActiveMatrix", "dst": "", "aliases": [  "active matrix" ] },
+ { "src": "TIBCO EMS", "dst": "", "aliases": [] },
+ { "src": "AppNode", "dst": "", "aliases": [  "app node" ] },
+ { "src": "AppSpace", "dst": "", "aliases": [  "app space" ] },
+ { "src": "EAR file", "dst": "fichier EAR", "aliases": [] },
+ { "src": "XPath", "dst": "", "aliases": [  "x path",  "ex path" ] },
+ { "src": "process starter", "dst": "process starter", "aliases": [] },
+ { "src": "shared resource", "dst": "ressource partagée", "aliases": [] },
+ { "src": "shared resources", "dst": "ressources partagées", "aliases": [] },
+ { "src": "module property", "dst": "propriété de module", "aliases": [] },
+ { "src": "module properties", "dst": "propriétés de module", "aliases": [] },
+ { "kind": "post", "src": "conférence", "dst": "leçon" },
+ { "kind": "post", "src": "conférences", "dst": "leçons" }
+]

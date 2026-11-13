@@ -1,0 +1,11 @@
+# Environnement Python et modèles (téléchargés à l'installation)
+server/.venv/
+server/models/
+server/config.json
+__pycache__/
+*.pyc
+
+# Sorties de tests
+test/out/
+node_modules/
+*.part
