@@ -109,7 +109,7 @@ qu'il envoie aux haut-parleurs).
 
 | Scénario | Ce qui est vérifié | Résultat |
 | --- | --- | --- |
-| **base** | Clic réel sur « Démarrer » ; capture ; transcription ; traduction ; **voix française réellement envoyée aux haut-parleurs** (26 s enregistrées en sortie) ; **langue de cette sortie re-détectée comme du français** par un modèle Whisper multilingue indépendant (confiance 0,994) ; capture à 16 kHz ; retard mesuré ≈ **1,6 s** | ✅ 9/9 |
+| **base** | Clic réel sur « Démarrer » ; capture ; transcription ; traduction ; **voix française réellement envoyée aux haut-parleurs** (26 s enregistrées en sortie) ; **langue de cette sortie re-détectée comme du français** par un modèle Whisper multilingue indépendant (confiance 0,994) ; capture à 16 kHz ; retard mesuré **1,6 à 2,5 s** selon les exécutions | ✅ 9/9 |
 | **fermeture de la popup** (dans *base*) | La fenêtre de l'extension est fermée ; de nouvelles phrases continuent d'arriver | ✅ |
 | **controles** | Pause (file vidée, plus aucune phrase), reprise, **arrêt** (capture libérée selon `tabCapture.getCapturedTabs()`, document de traitement fermé, pastille effacée), **redémarrage** | ✅ 8/8 |
 | **navigation** | Lecteur détecté ; **retour arrière** → travail en cours annulé et file vidée ; **changement d'extrait + d'adresse** (simule un changement de leçon) → nouvelle époque ; vitesse 1,25 × transmise | ✅ 5/5 |
