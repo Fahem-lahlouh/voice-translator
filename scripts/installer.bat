@@ -94,18 +94,18 @@ exit /b 0
 
 :trouver_python
 set "PY_CMD="
-for %%V in (3.13 3.12 3.11) do (
+for %%V in (3.14 3.13 3.12 3.11) do (
     if not defined PY_CMD (
         py -%%V -c "import sys" >nul 2>&1 && set "PY_CMD=py -%%V" && set "PY_DESC=Python %%V (lanceur py)"
     )
 )
 if not defined PY_CMD (
-    python -c "import sys; raise SystemExit(0 if (3,11) <= sys.version_info < (3,14) else 1)" >nul 2>&1 ^
+    python -c "import sys; raise SystemExit(0 if (3,11) <= sys.version_info < (3,15) else 1)" >nul 2>&1 ^
         && set "PY_CMD=python" && set "PY_DESC=python (dans le PATH)"
 )
 if not defined PY_CMD (
     echo.
-    echo ERREUR : aucun Python 3.11, 3.12 ou 3.13 ^(64 bits^) n'a ete trouve.
+    echo ERREUR : aucun Python 3.11 a 3.14 ^(64 bits^) n'a ete trouve.
     echo.
     echo Installez Python depuis https://www.python.org/downloads/windows/
     echo en cochant "Add python.exe to PATH" pendant l'installation,

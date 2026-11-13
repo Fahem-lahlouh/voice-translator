@@ -1,5 +1,5 @@
 # Dépendances du serveur local (versions testées, novembre 2026).
-# Python 3.11, 3.12 ou 3.13 (64 bits).
+# Python 3.11, 3.12, 3.13 ou 3.14 (64 bits) ; testé sous 3.13 et 3.14.
 faster-whisper==1.2.1     # MIT — reconnaissance vocale (Whisper via CTranslate2)
 ctranslate2==4.9.0        # MIT — moteur d'inférence (Whisper et OPUS-MT)
 sentencepiece==0.2.3      # Apache-2.0 — découpage en sous-mots pour OPUS-MT

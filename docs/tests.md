@@ -13,7 +13,7 @@ de développement décrite ci-dessous ; elles ne promettent rien pour votre PC.
 | Mémoire | 15 Go |
 | GPU | aucun |
 | Navigateur | Chromium 153 (Chrome for Testing), **fenêtré** sous Xvfb |
-| Python | 3.13 |
+| Python | 3.13, et 3.14 (tests unitaires + chaîne complète) |
 | Versions | faster-whisper 1.2.1, ctranslate2 4.9.0, piper-tts 1.8.0, onnxruntime 1.31.1, websockets 17.4 |
 
 ## Extraits audio utilisés
@@ -143,7 +143,7 @@ pic **≈ 560 Mo**.
 | Point | Statut |
 | --- | --- |
 | **Fonctionnement sur Udemy** | **À vérifier par vous** ([udemy.md](udemy.md)). Pas de compte disponible ici. |
-| **Windows et les scripts `.bat`** | **À vérifier.** Écrits avec soin (fins de ligne CRLF, encodage, chemins), jamais exécutés sur Windows. Toutes les dépendances publient des roues Windows 64 bits pour Python 3.11 à 3.13 (vérifié sur PyPI). |
+| **Windows et les scripts `.bat`** | **À vérifier.** Écrits avec soin (fins de ligne CRLF, encodage, chemins), jamais exécutés sur Windows. Toutes les dépendances publient des roues Windows 64 bits pour Python 3.11 à 3.14 (vérifié sur PyPI). |
 | Performances sur un portable grand public | **Supposées** 2 à 4 fois plus lentes que les mesures ci-dessus. Utilisez `mesurer-pc.bat`. |
 | Sessions longues (une heure) | **Non testées.** Le plus long essai dure ≈ 2 min. Les files sont bornées et rien n'est conservé, mais ce n'est pas une mesure. |
 | Voix d'un vrai formateur, accent, bruit | **Non testé** sur un vrai cours technique. Testé sur deux voix humaines non techniques. |

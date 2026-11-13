@@ -6,7 +6,7 @@
 * **Google Chrome 116 ou plus récent.** (Pour vérifier : menu ⋮ → Aide → À
   propos de Google Chrome.) Edge, Brave et Vivaldi, basés sur Chromium,
   fonctionnent aussi en principe, mais seul Chrome a été visé ici.
-* **Python 3.11, 3.12 ou 3.13 (64 bits).**
+* **Python 3.11 à 3.14 (64 bits).** Python 3.14 convient (testé).
   À télécharger sur <https://www.python.org/downloads/windows/>.
   **Important :** pendant l'installation, cochez **« Add python.exe to PATH »**.
 * **Environ 2 Go d'espace disque libre** (bibliothèques + modèles).

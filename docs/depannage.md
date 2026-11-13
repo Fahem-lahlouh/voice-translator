@@ -84,7 +84,7 @@ les formes courantes, mais pas toutes. En attendant, une entrée de glossaire
 
 | Message | Cause et solution |
 | --- | --- |
-| `aucun Python 3.11, 3.12 ou 3.13 n'a été trouvé` | Installez Python en cochant **« Add python.exe to PATH »**, puis relancez. |
+| `aucun Python 3.11 à 3.14 n'a été trouvé` | Installez Python en cochant **« Add python.exe to PATH »**, puis relancez. |
 | `l'installation des bibliothèques a échoué` | Pas d'accès Internet, ou proxy d'entreprise. Essayez depuis une autre connexion, ou configurez `pip` (`%APPDATA%\pip\pip.ini`). |
 | `Empreinte SHA-256 incorrecte` | Téléchargement corrompu. Le fichier a été supprimé : relancez `installer.bat`. |
 | `Taille inattendue` | Idem : relancez, la reprise est automatique. |
