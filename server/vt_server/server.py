@@ -72,12 +72,18 @@ class LocalServer:
             log.warning("Connexion refusée : en-tête Host inattendu (%r)", host)
             return connection.respond(http.HTTPStatus.FORBIDDEN, "Hôte refusé.\n")
         path = request.path.split("?", 1)[0]
+        origin = headers.get("Origin")
         if path == "/health":
             # Réponse minimale, sans information sur la machine ni sur l'activité.
-            return connection.respond(http.HTTPStatus.OK, "voice-translator: ok\n")
+            # La page d'options de l'extension l'interroge en HTTP simple : il
+            # lui faut l'en-tête CORS, accordé à la seule extension autorisée.
+            response = connection.respond(http.HTTPStatus.OK, "voice-translator: ok\n")
+            if origin in self._allowed_origins:
+                response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Cache-Control"] = "no-store"
+            return response
         if path != "/ws":
             return connection.respond(http.HTTPStatus.NOT_FOUND, "Introuvable.\n")
-        origin = headers.get("Origin")
         if origin not in self._allowed_origins:
             log.warning("Connexion refusée : origine non autorisée (%r)", origin)
             return connection.respond(http.HTTPStatus.FORBIDDEN, "Origine refusée.\n")

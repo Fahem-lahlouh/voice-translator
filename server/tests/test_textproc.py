@@ -4,7 +4,6 @@ import unittest
 
 from vt_server.textproc import (
     Glossary,
-    GlossaryEntry,
     find_code_spans,
     looks_degenerate,
     parse_glossary,

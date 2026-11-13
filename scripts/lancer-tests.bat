@@ -28,14 +28,8 @@ echo      (extrait anglais -^> transcription -^> traduction -^> voix)
 echo ==========================================================
 echo.
 if not exist "test\out" mkdir "test\out"
-"%VENV_PY%" -c "import sys,subprocess;subprocess.run(['ffmpeg','-loglevel','error','-y','-i','test/audio/tibco_demo_en.ogg','-ac','1','-ar','16000','-sample_fmt','s16','test/out/demo16k.wav'])" 2>nul
-if not exist "test\out\demo16k.wav" (
-    echo Conversion impossible : ffmpeg n'est pas installe.
-    echo Le test utilise alors l'extrait deja au format WAV.
-    copy /y "test\audio\jfk_16k.wav" "test\out\demo16k.wav" >nul
-)
 pushd server
-"%VENV_PY%" -m vt_server --self-test "..\test\out\demo16k.wav" --out "..\test\out\voix-francaise.wav"
+"%VENV_PY%" -m vt_server --self-test "..\test\audio\tibco_demo_en.ogg" --out "..\test\out\voix-francaise.wav"
 set "RC2=%ERRORLEVEL%"
 popd
 

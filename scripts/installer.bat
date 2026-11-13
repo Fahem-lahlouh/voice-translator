@@ -11,7 +11,7 @@ echo ==========================================================
 echo.
 echo Cette installation va :
 echo   1. creer un environnement Python isole dans server\.venv
-echo   2. installer les bibliotheques necessaires (environ 250 Mo)
+echo   2. installer les bibliotheques necessaires (environ 550 Mo)
 echo   3. telecharger les modeles d'IA choisis (voir ci-dessous)
 echo.
 echo Tout reste sur ce PC. Aucun abonnement, aucune cle d'API.

@@ -34,7 +34,7 @@ def _parser() -> argparse.ArgumentParser:
     g.add_argument("--download-only", action="store_true",
                    help="télécharger les modèles du profil puis quitter")
     g.add_argument("--self-test", metavar="WAV",
-                   help="tester la chaîne complète sur un fichier WAV anglais, sans navigateur")
+                   help="tester la chaîne complète sur un fichier audio anglais (WAV, OGG, MP3…), sans navigateur")
     g.add_argument("--bench", action="store_true",
                    help="mesurer les performances de ce PC et recommander un profil")
     p.add_argument("--out", help="avec --self-test : fichier WAV français à écrire")
@@ -104,6 +104,8 @@ def cmd_download(cfg, all_voices: bool) -> int:
 def _read_wav_16k(path: str):
     import numpy as np
 
+    if not path.lower().endswith(".wav"):
+        return _decode_any_16k(path)
     with wave.open(path, "rb") as w:
         if w.getsampwidth() != 2:
             raise SystemExit("Le fichier doit être un WAV PCM 16 bits.")
@@ -115,6 +117,22 @@ def _read_wav_16k(path: str):
         n = int(len(data) * 16000 / sr)
         data = np.interp(np.linspace(0, len(data) - 1, n), np.arange(len(data)), data).astype(np.float32)
     return data
+
+
+def _decode_any_16k(path: str):
+    """Décode un fichier audio quelconque (OGG, MP3, FLAC…) en 16 kHz mono."""
+    import av
+    import numpy as np
+
+    chunks = []
+    with av.open(path) as container:
+        resampler = av.AudioResampler(format="flt", layout="mono", rate=16000)
+        for frame in container.decode(audio=0):
+            for out in resampler.resample(frame):
+                chunks.append(out.to_ndarray().reshape(-1))
+        for out in resampler.resample(None):
+            chunks.append(out.to_ndarray().reshape(-1))
+    return np.concatenate(chunks).astype(np.float32)
 
 
 def cmd_self_test(cfg, wav_path: str, out_path: str | None, glossary_path: str | None) -> int:
@@ -216,11 +234,10 @@ def cmd_self_test(cfg, wav_path: str, out_path: str | None, glossary_path: str |
 
 def cmd_bench(cfg) -> int:
     """Mesure le temps de calcul réel de ce PC pour chaque profil installé."""
-    import numpy as np
-
     from .config import Config
     from .engines import Recognizer, Speaker, Translator
     from .textproc import Glossary
+
 
     sample = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
                           "test", "audio", "jfk_16k.wav")
@@ -231,7 +248,7 @@ def cmd_bench(cfg) -> int:
     dur = len(audio) / 16000
     print(f"Machine : {platform.platform()} — {os.cpu_count()} cœurs logiques — "
           f"Python {platform.python_version()}")
-    print(f"Extrait : {dur:.1f} s d'anglais. Chaque mesure est faite deux fois (on garde la 2e).\n")
+    print(f"Extrait : {dur:.1f} s d'anglais. Chaque profil est mesuré 3 fois après échauffement (médiane retenue).\n")
     results = {}
     for name, prof in PROFILES.items():
         c = Config(profile=name, models_dir=cfg.models_dir, device=cfg.device).resolved()
@@ -243,7 +260,9 @@ def cmd_bench(cfg) -> int:
         tr = Translator(models.model_dir(c.models_dir, models.CATALOG[keys[1]]), c)
         spk = Speaker(c.models_dir)
         spk.preload("siwis")
-        for _ in range(2):
+        runs = []
+        sp = None
+        for i in range(4):  # 1 passage d'échauffement, puis 3 mesures
             t = time.perf_counter()
             res = rec.transcribe(audio)
             t_asr = time.perf_counter() - t
@@ -253,10 +272,15 @@ def cmd_bench(cfg) -> int:
             t = time.perf_counter()
             sp = spk.synthesize(fr.text, "siwis")
             t_tts = time.perf_counter() - t
+            if i:
+                runs.append((t_asr, t_mt, t_tts))
+        runs.sort(key=sum)
+        t_asr, t_mt, t_tts = runs[len(runs) // 2]  # médiane
         load = (t_asr + t_mt + t_tts) / dur
         results[name] = load
         print(f"{name:10s} : ASR {t_asr:.2f} s, traduction {t_mt:.2f} s, voix {t_tts:.2f} s "
-              f"(voix de {sp.duration:.1f} s) → charge {load:.2f} × temps réel")
+              f"(voix de {sp.duration:.1f} s) → charge {load:.2f} × temps réel "
+              f"[médiane de 3 mesures]")
         del rec, tr, spk
     if not results:
         print("\nAucun profil mesurable : lancez d'abord l'installation.")

@@ -495,6 +495,35 @@ TESTS.pauseauto = async () => {
   } finally { await S.close(); }
 };
 
+// 11) Page d'options : test de connexion, glossaire, conservation des réglages.
+TESTS.options = async () => {
+  const S = await session();
+  try {
+    await H.sleep(4000);
+    const opt = await S.ctx.newPage();
+    await opt.goto(`chrome-extension://${new URL(S.sw.url()).host}/options.html`);
+    await opt.fill('#serverPort', String(H.SERVER_PORT));
+    await opt.click('#testServer');
+    await opt.waitForFunction(() => !/en cours/.test(document.getElementById('probe').textContent), null, { timeout: 10000 });
+    const probe = await opt.textContent('#probe');
+    H.record('options : test de connexion au serveur local', /répond sur le port/.test(probe) && !/n'est pas/.test(probe), probe);
+    const n = Number(await opt.textContent('#count'));
+    H.record('options : glossaire par défaut chargé', n >= 10, `${n} entrées`);
+    await opt.fill('#glossary', 'TIBCO | tipco\nligne = \n= sans terme');
+    await opt.click('#save');
+    const err = await opt.textContent('#glossaryErrors');
+    H.record('options : glossaire invalide refusé avec un message', /terme manquant/.test(err), err.trim());
+    await opt.fill('#glossary', 'TIBCO | tipco\nshared resource = ressource partagée\nfr: conférence => leçon\n');
+    await opt.click('#save');
+    await H.sleep(300);
+    await opt.reload();
+    await H.sleep(500);
+    const kept = await opt.inputValue('#glossary');
+    H.record('options : glossaire personnalisé conservé après rechargement', kept.includes('ressource partagée'));
+    await opt.close();
+  } finally { await S.close(); }
+};
+
 // --------------------------------------------------------------------- run
 
 const names = Object.keys(TESTS).filter(want);

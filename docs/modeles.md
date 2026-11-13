@@ -82,25 +82,36 @@ proposées ici :
 | `equilibre` | small.en + opus-mt-en-fr + siwis | ≈ 700 Mo | ≈ 700 Mo |
 | `qualite` | small.en + opus-mt-tc-big + siwis | ≈ 790 Mo | ≈ 790 Mo |
 
-À quoi s'ajoutent les bibliothèques Python dans `server\.venv` : **≈ 1,0 Go**
-(mesuré sur la machine de test ; principalement `ctranslate2`, `onnxruntime`,
-`numpy` et `av`).
+À quoi s'ajoutent les bibliothèques Python dans `server\.venv` : **≈ 530 Mo**
+(mesuré sur la machine de test, sous Linux ; la taille peut différer un peu
+sous Windows). Principalement `ctranslate2`, `onnxruntime`, `numpy` et `av`.
 
 **Prévoyez 2 Go d'espace libre** pour une installation confortable.
 
 ## Besoins machine
 
 Mesures réelles sur la machine de test (4 cœurs x86-64 à 2,3 GHz, 15 Go de
-RAM, **sans GPU**, Linux) — voir [tests.md](tests.md) pour le détail.
+RAM, **sans GPU**, Linux), sur l'extrait de test de 77 s (70 s de parole) —
+voir [tests.md](tests.md) pour le détail.
 
-| Profil | Mémoire du serveur (pic) | Charge processeur | Verdict sur cette machine |
-| --- | --- | --- | --- |
-| `prudent` | ≈ 0,9 Go | ≈ 0,19 × temps réel | confortable |
-| `equilibre` | ≈ 1,5 Go | ≈ 0,36 × temps réel | utilisable |
-| `qualite` | ≈ 1,6 Go | non mesuré en continu | à vérifier sur votre PC |
+| Profil | Mémoire du serveur (pic) | Charge processeur | Retard moyen (max) | Verdict sur cette machine |
+| --- | --- | --- | --- | --- |
+| `prudent` | ≈ 0,74 Go | 0,19 × temps réel | 1,4 s (1,7 s) | confortable |
+| `equilibre` | ≈ 1,24 Go | 0,36 × temps réel | 2,4 s (2,9 s) | confortable |
+| `qualite` | ≈ 1,42 Go | 0,38 × temps réel | 2,6 s (3,1 s) | confortable |
 
 « Charge 0,19 × temps réel » signifie que traiter 60 s de parole demande
 ≈ 11 s de calcul : il reste une large marge pour la lecture vidéo.
+« Retard » = temps entre la **fin** d'une phrase anglaise et le moment où sa
+version française est prête.
+
+Pendant une vraie session dans Chrome (profil `prudent`), le pic mémoire du
+serveur mesuré était de **≈ 560 Mo**. Chrome lui-même n'a pas été mesuré.
+
+> **Attention, ces chiffres sont flatteurs.** Le processeur de test est un
+> Xeon de serveur récent (instructions AVX-512 et AMX, que CTranslate2
+> exploite). Sur un portable grand public, comptez **2 à 4 fois plus** de
+> temps de calcul : c'est une estimation, pas une mesure.
 
 **Recommandations prudentes** (non mesurées sur d'autres machines) :
 

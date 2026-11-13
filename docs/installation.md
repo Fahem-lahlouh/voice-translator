@@ -37,7 +37,7 @@ Le script :
 1. vérifie la présence de Python ;
 2. crée un environnement Python isolé dans `server\.venv` (rien n'est installé
    dans votre Python système) ;
-3. installe les bibliothèques (≈ 250 Mo) ;
+3. installe les bibliothèques (≈ 550 Mo installés) ;
 4. vous demande un **profil** puis télécharge les modèles correspondants.
 
 | Profil | Reconnaissance | Traduction | Téléchargement | Pour qui |
