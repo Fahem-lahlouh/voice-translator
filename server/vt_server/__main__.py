@@ -189,9 +189,7 @@ def cmd_self_test(cfg, wav_path: str, out_path: str | None, glossary_path: str |
         sess.feed(1, bytes(3200))
     deadline = time.monotonic() + 60
     while time.monotonic() < deadline:
-        with sess._cv:
-            idle = not sess._seg_q and not sess._tts_q
-        if idle and not sess._busy_text and not sess._busy_tts:
+        if sess.idle():
             break
         time.sleep(0.1)
     time.sleep(0.2)

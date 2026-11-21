@@ -170,6 +170,23 @@ class Speech:
     duration: float
 
 
+def trim_silence(pcm: bytes, sr: int, keep_s: float = 0.04) -> bytes:
+    """Retire le blanc que Piper ajoute avant et après chaque phrase.
+
+    Chaque phrase française démarre ainsi plus tôt et la file de lecture se
+    vide plus vite (le blanc entre deux phrases est géré par l'extension)."""
+    a = np.frombuffer(pcm, dtype="<i2")
+    if a.size == 0:
+        return pcm
+    loud = np.nonzero(np.abs(a) > 300)[0]  # ≈ -40 dB
+    if loud.size == 0:
+        return pcm
+    keep = int(keep_s * sr)
+    lo = max(0, int(loud[0]) - keep)
+    hi = min(a.size, int(loud[-1]) + keep)
+    return a[lo:hi].tobytes()
+
+
 class Speaker:
     def __init__(self, models_dir: str):
         self.models_dir = models_dir
@@ -224,7 +241,7 @@ class Speaker:
             chunks = list(voice.synthesize(spoken, cfg))
         if not chunks:
             return None
-        pcm = b"".join(c.audio_int16_bytes for c in chunks)
+        pcm = trim_silence(b"".join(c.audio_int16_bytes for c in chunks), chunks[0].sample_rate)
         sr = chunks[0].sample_rate
         return Speech(pcm, sr, len(pcm) / 2 / sr)
 
@@ -285,6 +302,41 @@ class Engines:
                 log.exception("auditeur de statut")
 
     # -- chargement
+    # Modèle de reconnaissance plus rapide à utiliser si le PC ne suit pas.
+    FASTER_ASR = {"medium.en": "small.en", "small.en": "base.en", "base.en": "tiny.en"}
+
+    def downgrade_asr(self, on_done: Callable[[str, str], None] | None = None) -> bool:
+        """Passe en arrière-plan à un modèle de reconnaissance plus rapide.
+
+        Le modèle actuel reste utilisé jusqu'à ce que le nouveau soit prêt.
+        Renvoie False s'il n'existe pas de modèle plus rapide ou si un
+        changement est déjà en cours."""
+        current = self.cfg.asr_model
+        target = self.FASTER_ASR.get(current)
+        if target is None or getattr(self, "_downgrading", False):
+            return False
+        self._downgrading = True
+
+        def run():
+            try:
+                d = self._prepare("asr", f"asr:{target}")
+                rec = Recognizer(d, self.cfg)
+                import numpy as np
+                rec.transcribe(np.zeros(16000, dtype=np.float32), fast=True)
+                self.recognizer = rec  # remplacement atomique
+                self.cfg.asr_model = target
+                self._set("asr", state="pret", label=models.CATALOG[f"asr:{target}"].label)
+                log.warning("Reconnaissance trop lente avec %s : passage à %s", current, target)
+                if on_done:
+                    on_done(current, target)
+            except Exception:
+                log.exception("Passage à un modèle plus rapide impossible")
+            finally:
+                self._downgrading = False
+
+        threading.Thread(target=run, name="vt-asr-rapide", daemon=True).start()
+        return True
+
     def start(self) -> None:
         self._thread = threading.Thread(target=self._load_all, name="vt-load", daemon=True)
         self._thread.start()
@@ -318,6 +370,9 @@ class Engines:
             d = self._prepare("asr", f"asr:{cfg.asr_model}")
             self._set("asr", state="chargement", progress=1.0)
             self.recognizer = Recognizer(d, cfg)
+            # Échauffement : le premier appel est nettement plus lent.
+            import numpy as np
+            self.recognizer.transcribe(np.zeros(16000, dtype=np.float32), fast=True)
             self._set("asr", state="pret")
 
             comp = "mt"

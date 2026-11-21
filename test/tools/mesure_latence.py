@@ -27,7 +27,7 @@ from vt_server.pipeline import Session, Settings  # noqa: E402
 from vt_server.textproc import Glossary, parse_glossary  # noqa: E402
 
 GAP_S = 0.12
-QUEUE_DROP_AT_S, QUEUE_DROP_TO_S = 14.0, 7.0  # valeurs de offscreen.js
+QUEUE_DROP_AT_S = float(__import__("os").environ.get("VT_QUEUE_DROP_AT", "8"))  # valeur de offscreen.js
 
 
 def main() -> int:
@@ -38,6 +38,8 @@ def main() -> int:
     ap.add_argument("--bruit", type=float, default=None, help="ajoute un bruit de fond à N dB sous la parole")
     ap.add_argument("--musique", type=float, default=None, help="ajoute une musique synthétique à N dB sous la parole")
     ap.add_argument("--duree", type=float, default=0, help="ne garder que les N premières secondes")
+    ap.add_argument("--cible", type=float, default=0, help="durée cible d'une proposition (s)")
+    ap.add_argument("--max", type=float, default=0, help="durée maximale d'une proposition (s)")
     ap.add_argument("--json")
     a = ap.parse_args()
 
@@ -67,7 +69,13 @@ def main() -> int:
         mus *= rms * 10 ** (-a.musique / 20) / (np.sqrt(np.mean(mus**2)) + 1e-9)
         audio = np.clip(audio + mus.astype(np.float32), -1, 1)
 
-    cfg = Config(profile=a.profile, models_dir=str(ROOT / "server/models"), cpu_threads=a.threads).resolved()
+    over = {}
+    if a.cible:
+        over["soft_max_segment_s"] = a.cible
+    if a.max:
+        over["hard_max_segment_s"] = a.max
+    cfg = Config(profile=a.profile, models_dir=str(ROOT / "server/models"), cpu_threads=a.threads,
+                 **over).resolved()
     eng = Engines(cfg, download=False)
     eng.start()
     eng.ready.wait(600)
@@ -83,10 +91,23 @@ def main() -> int:
         if o["type"] == "segment":
             events.append((now(), o))
 
+    sim = {"end": 0.0, "skipped": 0}
+    rows = []
+
     def send_bin(d):
+        # Lecture simulée en direct, comme dans offscreen.js.
         (n,) = struct.unpack_from("<I", d, 0)
         h = json.loads(d[4:4 + n])
-        chunks.append((now(), h))
+        t_ready = now()
+        chunks.append((t_ready, h))
+        if max(0.0, sim["end"] - t_ready) > QUEUE_DROP_AT_S:
+            sim["skipped"] += 1
+            return
+        start = max(t_ready, sim["end"] + (GAP_S if sim["end"] else 0))
+        sim["end"] = start + h["duration"]
+        rows.append({"t0": h["t0"], "t1": h["t1"], "pret": t_ready, "debut_voix": start,
+                     "attente_file": start - t_ready, "duree_fr": h["duration"], "texte": h["text"],
+                     "rate": h.get("rate"), "tts_ms": h.get("ttsMs")})
 
     s = Session(eng, cfg, send_json, send_bin)
     orig_enq = s._enqueue_segment
@@ -101,10 +122,8 @@ def main() -> int:
     pcm = (np.clip(audio, -1, 1) * 32767).astype("<i2")
     step = 1600
     t_start[0] = time.monotonic()
-    play_end = 0.0  # simulation de la file de lecture
-
     def sim_queue_s(t):
-        return max(0.0, play_end - t)
+        return max(0.0, sim["end"] - t)
 
     for i in range(0, len(pcm), step):
         target = i / 16000
@@ -119,27 +138,13 @@ def main() -> int:
         s.feed(1, bytes(3200))
     t_end = time.monotonic() + 120
     while time.monotonic() < t_end:
-        with s._cv:
-            idle = not s._seg_q and not s._tts_q
-        if idle and not s._busy_text and not s._busy_tts and not s._carry:
+        if s.idle():
             break
         time.sleep(0.1)
     time.sleep(0.3)
     s.close()
 
-    # Lecture simulée, dans l'ordre d'arrivée.
-    rows, skipped = [], 0
-    play_end = 0.0
-    for t_ready, h in chunks:
-        q = max(0.0, play_end - t_ready)
-        if q > QUEUE_DROP_AT_S:
-            skipped += 1
-            continue
-        start = max(t_ready, play_end + (GAP_S if play_end else 0))
-        play_end = start + h["duration"]
-        rows.append({"t0": h["t0"], "t1": h["t1"], "pret": t_ready, "debut_voix": start,
-                     "attente_file": start - t_ready, "duree_fr": h["duration"], "texte": h["text"],
-                     "rate": h.get("rate"), "tts_ms": h.get("ttsMs")})
+    skipped = sim["skipped"]
 
     segs = []
     for t_ev, o in events:

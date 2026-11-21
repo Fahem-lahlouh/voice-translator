@@ -151,20 +151,21 @@ class Segmenter:
     def _required_silence(self, dur: float) -> float:
         """Silence exigé pour clore un segment, selon sa durée actuelle.
 
-        Segment court : on attend une vraie pause, pour ne pas traduire des
-        bribes (« Ask not. ») et parce que chaque appel au moteur de
-        reconnaissance a un coût fixe. Segment long : une respiration suffit.
+        Objectif : livrer la parole par propositions (≈ soft_max_s secondes)
+        plutôt que par énoncés entiers, pour que la voix française démarre
+        pendant que l'orateur continue.
+
+        * segment très court : on attend une vraie pause, pour ne pas envoyer
+          des bribes de mots isolés à la reconnaissance ;
+        * au-delà, une respiration (≈ 0,25 s) suffit ;
+        * passé la durée cible, la moindre micro-pause (≈ 0,12 s) suffit.
         """
         base = self.min_silence_s
-        if dur < 2.5:
-            return base * 1.5
-        if dur < 5.0:
-            return base * 1.15
+        if dur < 1.2:
+            return base
         if dur < self.soft_max_s:
-            return base * 0.8
-        if dur < self.soft_max_s + 3.0:
-            return min(base, 0.30)
-        return min(base, 0.16)
+            return min(base, 0.25)
+        return min(base, 0.12)
 
     def _step(self, frame: np.ndarray, p: float):
         self._n_frames += 1
@@ -222,7 +223,9 @@ class Segmenter:
 
     def _force_cut(self):
         n = len(self._probs)
-        window = int(4.0 / FRAME_S)
+        # Creux recherché dans la seconde moitié du segment (au moins 1 s de
+        # parole conservée), pour ne pas trancher un mot.
+        window = int(min(4.0, max(1.0, self.hard_max_s / 2)) / FRAME_S)
         lo = max(int(1.0 / FRAME_S), n - window)
         probs = np.asarray(self._probs[lo:n], dtype=np.float32)
         # Lissage sur 3 trames : on cherche un creux, pas un point isolé.

@@ -15,9 +15,9 @@
 
 const PROTOCOL = 1;
 const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
-const QUEUE_DROP_AT_S = 14; // sans pause automatique : au-delà, on saute des passages
-const QUEUE_DROP_TO_S = 7;
-const AUTOPAUSE_AT_S = 5; // avec pause automatique : on met la vidéo en pause
+const QUEUE_DROP_AT_S = 8; // sans pause automatique : au-delà, on saute des passages
+const QUEUE_DROP_TO_S = 3;
+const AUTOPAUSE_AT_S = 4; // avec pause automatique : on met la vidéo en pause
 const AUTOPAUSE_RESUME_S = 0.8;
 const DUCK_FACTOR = 0.35;
 const GAP_S = 0.12; // silence entre deux phrases françaises
@@ -315,6 +315,9 @@ function onServerJson(msg) {
         state.warning = 'Le PC ne suit pas le rythme : des passages sont ignorés. '
           + 'Choisissez un profil plus léger côté serveur ou activez la pause automatique.';
       }
+      break;
+    case 'notice':
+      state.warning = msg.message || '';
       break;
     case 'error':
       // Erreur ponctuelle d'un moteur : on la signale sans interrompre la session.

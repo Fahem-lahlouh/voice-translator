@@ -38,7 +38,7 @@ traitement continue. La pastille sur l'icône indique l'état : `FR` (en cours),
 | **Sous-titres français sur la page** | Affiche la phrase en cours en bas de la vidéo (fonctionne aussi en plein écran). |
 | **Afficher aussi le texte anglais reconnu** | Utile pour repérer un mot mal reconnu à ajouter au glossaire. |
 | **Mettre la vidéo en pause quand la voix prend du retard** | La vidéo est mise en pause automatiquement, puis relancée quand la traduction a rattrapé. Demande un lecteur contrôlable. |
-| **Accélérer légèrement la voix** | Jusqu'à × 1,25 automatiquement, uniquement en cas de retard. |
+| **Accélérer légèrement la voix** | Jusqu'à × 1,4 automatiquement, pour que chaque phrase française tienne dans la durée de l'original et que le retard ne s'accumule pas. |
 
 ### Pourquoi baisser l'original ne dégrade pas la traduction
 

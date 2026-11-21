@@ -164,17 +164,18 @@ Quand la voix française parle, l'original est encore atténué (option
 1. **Détection de parole** — Silero VAD, trames de 32 ms. Un segment démarre
    sur 2 trames de parole consécutives, avec 250 ms de pré-enregistrement pour
    ne pas tronquer l'attaque du premier mot.
-2. **Fin de segment** — sur un silence, dont la durée exigée **diminue quand
-   le segment s'allonge** (0,9 s pour un segment court, 0,16 s au-delà de
-   10 s) : des phrases courtes ne sont pas hachées, et un orateur bavard ne
-   fait pas exploser le retard. Si personne ne s'arrête, coupe forcée à 14 s,
-   **placée sur la trame la moins « parlée »** des 4 dernières secondes, pour
-   ne pas trancher un mot.
+2. **Découpage par propositions** — la parole n'est plus livrée par énoncés
+   entiers mais par groupes de mots d'environ **2,5 s** : une respiration
+   (≈ 0,25 s) suffit à clore un segment, puis la moindre micro-pause au-delà
+   de la durée cible. Sans pause, coupe forcée à **5 s**, placée sur la trame
+   la moins « parlée » de la seconde moitié du segment, pour ne pas trancher
+   un mot. Sur un PC lent, le serveur **allonge automatiquement** les
+   propositions (jusqu'à 8 s), car chaque appel à Whisper a un coût fixe.
 3. **Aucun recouvrement** entre segments : aucun mot n'est transcrit deux fois,
    donc aucune répétition dans la voix française.
-4. **Phrase à cheval** — si une coupe forcée tombe en plein milieu d'une
-   phrase, la fin inachevée est **mise de côté et rattachée au segment
-   suivant** plutôt que traduite seule.
+4. **Traduction immédiate** — une proposition est traduite même si la phrase
+   n'est pas finie ; seul un fragment final de 1 à 3 mots, coupé en pleine
+   phrase, est rattaché à la proposition suivante.
 5. **Contexte limité** — les 200 derniers caractères transcrits servent
    d'amorce au moteur de reconnaissance (meilleure ponctuation et cohérence),
    mais `condition_on_previous_text` reste désactivé pour éviter que le modèle
@@ -184,21 +185,27 @@ Quand la voix française parle, l'original est encore atténué (option
    parole », si le texte est trop répétitif, ou s'il correspond à une phrase
    parasite connue de Whisper (« Thank you. », « Thanks for watching! »…)
    sur un passage sans parole nette. **Rien n'est inventé.**
-7. **Traduction phrase par phrase**, avec glossaire (§7).
-8. **Synthèse** et mise en file de lecture.
+7. **Trois étages en parallèle** — reconnaissance, traduction et voix ont
+   chacun leur fil : la reconnaissance du segment suivant n'attend plus la
+   traduction du précédent.
+8. **Synthèse** (blancs de début et de fin retirés) et mise en file de lecture.
 
-### Files d'attente et retard
+### Rythme de la voix et retard
 
-* Attente côté serveur bornée (25 s par défaut) : au-delà, **les segments les
-  plus anciens sont abandonnés** et signalés, plutôt que d'accumuler un retard
-  sans fin.
-* Au-delà de 6 s d'attente, la reconnaissance passe en **décodage rapide**
-  (faisceau 1) pour rattraper.
-* File de lecture bornée côté extension (14 s) : au-delà, des passages sont
-  sautés — ou, si l'option est active, **la vidéo est mise en pause** le temps
-  que la traduction rattrape, puis relancée automatiquement.
-* La voix peut être **légèrement accélérée** (× 1,25 au maximum) quand elle
-  prend du retard.
+* **Vitesse calée sur l'original** : le serveur estime la durée de chaque
+  phrase française (débit de la voix appris pendant la session) et l'accélère
+  pour qu'elle tienne dans la durée de la parole anglaise correspondante ; il
+  accélère aussi dès que le retard dépasse **2 s**. Plafond : × 1,4.
+* Le serveur **estime lui-même** quand la voix sera libre (à chaque envoi) ;
+  l'extension recale cette estimation toutes les 0,5 s.
+* **PC trop lent** : si la reconnaissance dépasse durablement 0,7 × le temps
+  réel, le serveur bascule tout seul vers un modèle plus rapide
+  (`small.en` → `base.en` → `tiny.en`) et l'extension l'affiche.
+* Attente côté serveur bornée à **8 s** (au-delà, les segments les plus
+  anciens sont abandonnés et signalés) ; décodage rapide au-delà de 2,5 s.
+* File de lecture bornée côté extension à **8 s** : au-delà, des passages sont
+  sautés — ou, si l'option est active, **la vidéo est mise en pause** (dès 4 s)
+  le temps que la traduction rattrape.
 
 ### Annulation du travail périmé
 

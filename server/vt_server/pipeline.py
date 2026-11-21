@@ -33,8 +33,9 @@ from .textproc import Glossary, ends_sentence, parse_glossary, split_sentences
 log = logging.getLogger("vt.pipeline")
 
 SUPPORTED_PAIRS = {("en", "fr")}
-MAX_CARRY_CHARS = 220
-CARRY_TIMEOUT_S = 1.6
+MAX_CARRY_WORDS = 3  # fragment final trop court pour être traduit seul
+CARRY_TIMEOUT_S = 0.8
+VOICE_GAP_S = 0.12  # silence entre deux phrases, comme dans l'extension
 
 
 @dataclass
@@ -94,6 +95,7 @@ class _TtsItem:
     t0: float
     t1: float
     last: bool
+    src_dur: float = 0.0  # durée de parole anglaise correspondant à cette phrase
 
 
 class Session:
@@ -116,10 +118,14 @@ class Session:
         )
         self._cv = threading.Condition()
         self._seg_q: deque = deque()  # (epoch, id, SpeechSegment)
+        self._mt_q: deque = deque()  # textes à traduire
         self._tts_q: deque = deque()
         self._closed = False
         self._seg_counter = 0
-        self._client_queue_s = 0.0
+        # Instant (horloge monotone) où la voix française sera libre, estimé
+        # par le serveur à chaque envoi et recalé par les rapports de lecture
+        # de l'extension.
+        self._voice_free_at = 0.0
         self._last_level_clock = -1.0
         self._silent_s = 0.0  # durée de silence numérique absolu (diagnostic)
         # État du fil « texte » (accédé uniquement par lui).
@@ -133,10 +139,19 @@ class Session:
         self.stats = {"segments": 0, "abandonnes": 0, "incertains": 0, "phrases": 0,
                       "audio_s": 0.0, "asr_s": 0.0, "mt_s": 0.0, "tts_s": 0.0, "voix_s": 0.0}
         self._busy_text = False
+        self._busy_mt = False
         self._busy_tts = False
-        self._phase = "transcription"
+        # Coût moyen d'un appel de reconnaissance (s) et débit de la voix
+        # (caractères par seconde à vitesse 1), appris pendant la session.
+        self._asr_call_ema: Optional[float] = None
+        self._asr_rtf_ema: Optional[float] = None  # calcul / durée de parole
+        self._asr_calls = 0
+        self._cps_ema: dict = {}
+        # Trois étages en parallèle : la reconnaissance du segment suivant
+        # n'attend plus la traduction ni la voix du précédent.
         self._threads = [
             threading.Thread(target=self._text_loop, name="vt-texte", daemon=True),
+            threading.Thread(target=self._mt_loop, name="vt-trad", daemon=True),
             threading.Thread(target=self._tts_loop, name="vt-voix", daemon=True),
         ]
         for t in self._threads:
@@ -159,8 +174,9 @@ class Session:
         with self._cv:
             self.epoch = epoch
             self._seg_q.clear()
+            self._mt_q.clear()
             self._tts_q.clear()
-            self._client_queue_s = 0.0
+            self._voice_free_at = 0.0
             self._cv.notify_all()
         self.segmenter.reset()
         self._last_level_clock = -1.0
@@ -179,11 +195,22 @@ class Session:
         with self._cv:
             self._closed = True
             self._seg_q.clear()
+            self._mt_q.clear()
             self._tts_q.clear()
             self._cv.notify_all()
 
+    def idle(self) -> bool:
+        """Vrai quand plus rien n'est en attente ni en cours de calcul."""
+        with self._cv:
+            empty = not self._seg_q and not self._mt_q and not self._tts_q
+        return empty and not (self._busy_text or self._busy_mt or self._busy_tts or self._carry)
+
     def playback_report(self, queue_s: float) -> None:
-        self._client_queue_s = max(0.0, min(600.0, queue_s))
+        """L'extension indique combien de voix française reste à jouer."""
+        self._voice_free_at = time.monotonic() + max(0.0, min(600.0, queue_s))
+
+    def voice_queue_s(self) -> float:
+        return max(0.0, self._voice_free_at - time.monotonic())
 
     # --------------------------------------------------------------- audio
     def feed(self, epoch: int, pcm: bytes) -> None:
@@ -217,7 +244,9 @@ class Session:
             "silentInput": round(self._silent_s, 1),
             "asrBacklog": round(backlog, 1),
             "ttsQueue": tts_n,
-            "busy": self._phase if self._busy_text else ("voix" if self._busy_tts else ""),
+            "busy": ("transcription" if self._busy_text else "traduction" if self._busy_mt
+                     else "voix" if self._busy_tts else ""),
+            "segmentTarget": round(self.segmenter.soft_max_s, 1),
             "rtf": round(rtf, 3),
             "dropped": st["abandonnes"],
             "uncertain": st["incertains"],
@@ -301,7 +330,6 @@ class Session:
             self._carry_epoch = epoch
         st = self.settings
         fast = backlog > self.cfg.fast_mode_backlog_s
-        self._phase = "transcription"
         t = time.perf_counter()
         prompt = (st.glossary.asr_prompt() + " " + self._context[-200:]).strip()
         res = eng.recognizer.transcribe(seg.audio, prompt=prompt, fast=fast, language=st.source)
@@ -310,6 +338,8 @@ class Session:
         self.stats["segments"] += 1
         self.stats["audio_s"] += dur
         self.stats["asr_s"] += asr_s
+        self._adapt_segments(asr_s)
+        self._watch_asr_speed(asr_s, dur)
         if epoch != self.epoch:
             return  # résultat périmé (saut ou changement de vidéo pendant le calcul)
         conf = {"logprob": round(res.avg_logprob, 2), "noSpeech": round(res.no_speech_prob, 2)}
@@ -330,10 +360,12 @@ class Session:
             t0 = self._carry_t0
             self._carry = ""
         sentences = split_sentences(text)
-        # Coupe forcée en pleine phrase : garder la fin inachevée pour la
-        # joindre au segment suivant, au lieu de traduire une demi-phrase.
+        # La parole est livrée par propositions : on traduit tout de suite,
+        # même une phrase inachevée. Seul un fragment final de quelques mots,
+        # coupé en pleine phrase, est rattaché au segment suivant (traduit
+        # seul, il n'aurait pas de sens).
         if seg.end == "forcee" and sentences and not ends_sentence(sentences[-1]) \
-                and len(sentences[-1]) <= MAX_CARRY_CHARS:
+                and len(sentences[-1].split()) <= MAX_CARRY_WORDS:
             self._carry = sentences.pop()
             self._carry_t0 = seg.t0 if not sentences else seg.t1 - 0.5
             self._carry_t1 = seg.t1
@@ -344,11 +376,72 @@ class Session:
                                   asr_ms=int(asr_s * 1000), conf=conf, sentences=sentences,
                                   fast=fast)
 
+    def _adapt_segments(self, asr_s: float) -> None:
+        """Allonge les propositions si la reconnaissance est lente sur ce PC.
+
+        Chaque appel à Whisper a un coût fixe (fenêtre de 30 s) : sur un PC
+        lent, des segments trop courts saturent le processeur. On vise une
+        durée de segment d'au moins 3,5 fois le coût moyen d'un appel.
+        """
+        e = self._asr_call_ema
+        self._asr_call_ema = asr_s if e is None else 0.7 * e + 0.3 * asr_s
+        if not self.cfg.adaptive_segments:
+            return
+        target = min(8.0, max(self.cfg.soft_max_segment_s, 3.5 * self._asr_call_ema))
+        self.segmenter.soft_max_s = target
+        self.segmenter.hard_max_s = max(self.cfg.hard_max_segment_s, target + 2.5)
+
+    def _watch_asr_speed(self, asr_s: float, dur: float) -> None:
+        """Si la reconnaissance reste trop lente malgré des propositions
+        allongées, bascule vers un modèle plus rapide (ex. small.en → base.en)
+        plutôt que de laisser le retard s'accumuler."""
+        if dur < 0.5:
+            return
+        r = asr_s / dur
+        e = self._asr_rtf_ema
+        self._asr_rtf_ema = r if e is None else 0.7 * e + 0.3 * r
+        self._asr_calls += 1
+        if self._asr_calls >= 4 and self._asr_rtf_ema > 0.7:
+            def done(old, new):
+                self._send_json({"type": "notice", "code": "asr_rapide",
+                                 "message": f"Ce PC est trop lent pour le modèle {old} : passage "
+                                            f"automatique au modèle {new}, plus rapide mais un peu "
+                                            "moins précis."})
+            if self.engines.downgrade_asr(done):
+                self._asr_calls = 0
+                self._asr_rtf_ema = None
+
     def _translate_and_queue(self, epoch, seg_id, text, t0, t1, *, asr_ms, conf,
                              sentences=None, fast=False) -> None:
+        with self._cv:
+            if epoch != self.epoch:
+                return
+            self._mt_q.append((epoch, seg_id, text, t0, t1, asr_ms, conf, sentences, fast))
+            self._cv.notify_all()
+
+    # ------------------------------------------------------ fil « traduction »
+    def _mt_loop(self) -> None:
+        while True:
+            with self._cv:
+                while not self._mt_q and not self._closed:
+                    self._cv.wait()
+                if self._closed:
+                    return
+                item = self._mt_q.popleft()
+                self._busy_mt = True
+            try:
+                if item[0] == self.epoch:
+                    self._translate(*item)
+            except Exception as exc:
+                log.exception("Erreur de traduction")
+                self._send_json({"type": "error", "code": "pipeline",
+                                 "message": f"Erreur de traduction : {exc}"})
+            finally:
+                self._busy_mt = False
+
+    def _translate(self, epoch, seg_id, text, t0, t1, asr_ms, conf, sentences, fast) -> None:
         st = self.settings
         sentences = sentences or split_sentences(text)
-        self._phase = "traduction"
         t = time.perf_counter()
         fr_parts, notes = [], []
         for s in sentences:
@@ -369,22 +462,46 @@ class Session:
             "en": text, "fr": " ".join(fr_parts), "asrMs": asr_ms, "mtMs": int(mt_s * 1000),
             "conf": conf, "fast": fast, "notes": notes,
         })
+        total = sum(len(f) for f in fr_parts) or 1
         with self._cv:
             if epoch != self.epoch:
                 return
             for i, fr in enumerate(fr_parts):
-                self._tts_q.append(_TtsItem(epoch, seg_id, i, fr, t0, t1, i == len(fr_parts) - 1))
+                share = (t1 - t0) * len(fr) / total
+                self._tts_q.append(_TtsItem(epoch, seg_id, i, fr, t0, t1, i == len(fr_parts) - 1, share))
             self._cv.notify_all()
 
     # ----------------------------------------------------------- fil « voix »
     def _speech_rate(self, item: _TtsItem) -> tuple:
+        """Vitesse de la voix pour tenir le rythme de l'original.
+
+        Deux contraintes, la plus forte l'emporte (plafonnée à max_speedup) :
+        1. la phrase française doit tenir à peu près dans la durée de la
+           parole anglaise correspondante, sinon le retard s'accumule ;
+        2. si un retard existe déjà (au-delà de target_lag_s), on le résorbe.
+        """
         st = self.settings
         rate = st.rate * min(1.5, max(1.0, st.video_rate))
-        lag = max(0.0, self.segmenter.clock_s - item.t1) + self._client_queue_s
+        # Retard prévu au début de cette phrase : temps déjà écoulé depuis la
+        # fin de la parole anglaise + voix française encore à jouer avant elle.
+        lag = max(0.0, self.segmenter.clock_s - item.t1) + self.voice_queue_s()
         boost = 1.0
-        if st.auto_speedup and lag > 4.0:
-            boost = min(self.cfg.max_speedup, 1.0 + (lag - 4.0) * 0.03)
+        if st.auto_speedup:
+            cps = self._cps_ema.get(st.voice, 14.0)  # caractères/s à vitesse 1
+            predicted = len(item.text) / cps / rate
+            if item.src_dur > 0.4:
+                boost = max(boost, predicted / (item.src_dur * 1.1))
+            if lag > self.cfg.target_lag_s:
+                boost = max(boost, 1.0 + 0.1 * (lag - self.cfg.target_lag_s))
+            boost = min(boost, self.cfg.max_speedup)
         return min(1.9, rate * boost), lag, boost
+
+    def _learn_voice_speed(self, voice: str, text: str, duration: float, rate: float) -> None:
+        if duration <= 0.3 or len(text) < 8:
+            return
+        cps = len(text) / (duration * rate)
+        old = self._cps_ema.get(voice)
+        self._cps_ema[voice] = cps if old is None else 0.8 * old + 0.2 * cps
 
     def _tts_loop(self) -> None:
         while True:
@@ -406,14 +523,18 @@ class Session:
                 if speech is None or item.epoch != self.epoch:
                     continue
                 self.stats["voix_s"] += speech.duration
+                self._learn_voice_speed(self.settings.voice, item.text, speech.duration, rate)
                 header = {
                     "type": "audio", "id": item.seg_id, "seq": item.seq, "epoch": item.epoch,
                     "sampleRate": speech.sample_rate, "duration": round(speech.duration, 3),
                     "t0": round(item.t0, 2), "t1": round(item.t1, 2), "text": item.text,
                     "rate": round(rate, 2), "boost": round(boost, 2),
                     "ttsMs": int(tts_s * 1000), "serverLag": round(lag, 2), "last": item.last,
+                    "srcDur": round(item.src_dur, 2),
                 }
                 self._send_binary(pack_audio(header, speech.pcm))
+                now = time.monotonic()
+                self._voice_free_at = max(now, self._voice_free_at) + speech.duration + VOICE_GAP_S
                 self._debug_dump(header, speech)
             except Exception as exc:
                 log.exception("Erreur de synthèse vocale")

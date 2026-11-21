@@ -127,6 +127,29 @@ Journal complet : `test/out/run-final.log`
 Mémoire du serveur pendant une vraie session Chrome (profil `prudent`) :
 pic **≈ 560 Mo**.
 
+## 3 bis. Étape 1 « latence » — mesures avant / après
+
+Outil : `test/tools/mesure_latence.py` (vrais moteurs, audio injecté en temps
+réel, file de lecture de l'extension simulée). « Délai » = temps entre le
+**début** de la parole anglaise et le début de sa voix française.
+
+| Scénario | Première voix | Délai médian | Délai max | Retard en fin d'extrait |
+| --- | --- | --- | --- | --- |
+| Formation avec pauses (prudent) | 9,0 → **3,4 s** | 8,9 → **4,7 s** | 14,9 → **9,0 s** | 6,5 → **3,6 s** |
+| Narration continue (prudent) | 8,5 → **3,9 s** | 10,8 → **5,5 s** | 15,9 → **7,8 s** | 8,3 → **2,5 s** |
+| Narration + musique de fond | 8,5 → **3,8 s** | 8,0 → **3,7 s** | 12,8 → **6,5 s** | 8,1 → **2,3 s** |
+| Équilibré, 1 cœur | 11,6 → **6,0 s** | 13,2 → **9,2 s** | 18,4 → **13,7 s** | 10,5 → **8,1 s** |
+| Équilibré, 1 cœur partagé (PC très lent) | 14,4 → **9,4 s** | 17,7 → **10,3 s** | 22,8 → **16,1 s** | 15,7 → **7,7 s** |
+
+Sur le PC très lent, le serveur est passé seul de `small.en` à `base.en`
+en cours d'extrait. La machine de test étant rapide, ces chiffres sont
+optimistes pour un portable grand public.
+
+Effet secondaire observé : avec des propositions courtes, un reste de 0,6 s
+après une coupe forcée a été mal reconnu. Il a été rejeté (rien d'inventé),
+mais quelques mots ont été perdus. C'est la raison du compromis 2,5 s / 5 s
+plutôt que 2 s / 4 s (délai médian 4,6 s mesuré avec 2 s / 4 s).
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |

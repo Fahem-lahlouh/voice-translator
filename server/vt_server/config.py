@@ -65,17 +65,22 @@ class Config:
 
     default_voice: str = "siwis"
 
-    # Découpage de la parole (secondes).
-    min_silence_s: float = 0.60
-    soft_max_segment_s: float = 7.0
-    hard_max_segment_s: float = 14.0
+    # Découpage de la parole (secondes). La parole est livrée par
+    # propositions d'environ soft_max_segment_s secondes (durée cible) ;
+    # le serveur allonge automatiquement cette durée si la reconnaissance
+    # est lente sur ce PC (voir adaptive_segments).
+    min_silence_s: float = 0.50
+    soft_max_segment_s: float = 2.5
+    hard_max_segment_s: float = 5.0
+    adaptive_segments: bool = True
     min_speech_s: float = 0.30
     vad_threshold: float = 0.5
 
     # Files d'attente.
-    max_asr_backlog_s: float = 25.0  # au-delà, les segments les plus anciens sont abandonnés
-    fast_mode_backlog_s: float = 6.0  # au-delà, décodage rapide (beam 1)
-    max_speedup: float = 1.25  # accélération maximale de la voix pour rattraper
+    max_asr_backlog_s: float = 8.0  # au-delà, les segments les plus anciens sont abandonnés
+    fast_mode_backlog_s: float = 2.5  # au-delà, décodage rapide (beam 1)
+    max_speedup: float = 1.4  # accélération maximale de la voix pour tenir le rythme
+    target_lag_s: float = 2.0  # retard visé entre la fin d'une proposition et sa voix
 
     # Confidentialité : rien n'est écrit sur disque sauf demande explicite.
     debug_dump_dir: str = ""
