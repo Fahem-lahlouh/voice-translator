@@ -1,4 +1,4 @@
-"""Génère l'extrait de test « formation TIBCO » (anglais synthétique).
+"""Génère les extraits de test anglais synthétiques (« formation TIBCO », « langue »).
 
 L'extrait est produit avec la voix Piper en_US « ljspeech » (jeu de données
 LJ Speech, domaine public). Il sert à tester le vocabulaire technique ; les
@@ -39,8 +39,30 @@ SCRIPT = [
 ]
 
 
+# Extrait « langue » : expressions idiomatiques et sigles (scénarios B et C).
+SCRIPT_LANGUE = [
+    ("Hello everyone, and welcome back.", 0.9),
+    ("Our company migrated its finance department to SAP last year.", 0.7),
+    ("This system allows us to manage everything in one place.", 0.9),
+    ("SAP is the most widely used ERP in Europe, and the API is quite simple.", 1.0),
+    ("Honestly, setting it up was a piece of cake.", 0.9),
+    ("NASA and the FBI both use similar tools.", 1.0),
+    ("It's raining cats and dogs outside.", 0.8),
+    ("You're kidding me!", 1.0),
+    ("Well, let's call it a day, guys.", 1.2),
+]
+
+
 def main() -> None:
+    import argparse
+
     from piper import PiperVoice, SynthesisConfig
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--extrait", choices=["tibco", "langue"], default="tibco")
+    args = ap.parse_args()
+    script = SCRIPT if args.extrait == "tibco" else SCRIPT_LANGUE
+    nom = "tibco_demo_en" if args.extrait == "tibco" else "langue_demo_en"
 
     voice_dir = ROOT / "server" / "models" / "test" / "en_US-ljspeech-medium"
     voice_dir.mkdir(parents=True, exist_ok=True)
@@ -50,14 +72,14 @@ def main() -> None:
             print("Téléchargement de", name)
             _download_file(BASE + name, dest, size, lambda n: None)
     voice = PiperVoice.load(str(voice_dir / "en_US-ljspeech-medium.onnx"))
-    out_wav = ROOT / "test" / "audio" / "tibco_demo_en.wav"
+    out_wav = ROOT / "test" / "audio" / f"{nom}.wav"
     sr = voice.config.sample_rate
     with wave.open(str(out_wav), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(sr)
         w.writeframes(bytes(int(sr * 0.5) * 2))
-        for text, pause in SCRIPT:
+        for text, pause in script:
             for chunk in voice.synthesize(text, SynthesisConfig(length_scale=1.0)):
                 w.writeframes(chunk.audio_int16_bytes)
             w.writeframes(bytes(int(sr * pause) * 2))
@@ -65,8 +87,8 @@ def main() -> None:
     subprocess.run(["ffmpeg", "-loglevel", "error", "-y", "-i", str(out_wav),
                     "-c:a", "libvorbis", "-q:a", "3", str(out_ogg)], check=True)
     out_wav.unlink()
-    (out_wav.parent / "tibco_demo_en.txt").write_text(
-        "\n".join(t for t, _p in SCRIPT) + "\n", encoding="utf-8")
+    (out_wav.parent / f"{nom}.txt").write_text(
+        "\n".join(t for t, _p in script) + "\n", encoding="utf-8")
     print("Écrit :", out_ogg)
 
 

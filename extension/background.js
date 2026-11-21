@@ -3,7 +3,7 @@
 // sous-titres). Il peut être mis en veille par Chrome à tout moment sans
 // interrompre la traduction : l'état vit dans le document offscreen.
 
-import { loadSettings, toServerSettings } from './lib/settings.js';
+import { detectContentMode, loadSettings, toServerSettings } from './lib/settings.js';
 
 const OFFSCREEN_URL = 'offscreen.html';
 const ADAPTER_FILE = 'content/adapter.js';
@@ -45,9 +45,10 @@ function toOffscreen(type, payload = {}) {
 
 async function connectionPayload() {
   const settings = await loadSettings();
+  const session = await getSession();
   return {
     settings,
-    serverSettings: await toServerSettings(settings),
+    serverSettings: await toServerSettings(settings, 1, session.detectedMode || 'auto'),
     port: settings.serverPort,
     token: settings.token,
   };
@@ -152,13 +153,21 @@ async function start(tabId) {
     await closeIfIdle();
     return { ok: false, error: captureErrorMessage(err) };
   }
+  // Type de contenu deviné d'après le site (seul le nom de domaine est lu ;
+  // l'autorisation activeTab, accordée par le clic, le permet).
+  let detectedMode = 'auto';
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    detectedMode = detectContentMode(tab.url || '');
+  } catch (_) { /* onglet inaccessible : mode générique */ }
+  await setSession({ tabId: null, detectedMode });
   const payload = await connectionPayload();
   const res = await toOffscreen('start', { streamId, tabId, ...payload });
   if (!res || !res.ok) {
     await closeIfIdle();
     return { ok: false, error: (res && res.error) || 'La capture n\'a pas pu démarrer.' };
   }
-  await setSession({ tabId });
+  await setSession({ tabId, detectedMode });
   const injected = await injectAdapter(tabId);
   return { ok: true, adapter: injected };
 }
@@ -212,7 +221,9 @@ async function handle(msg, sender) {
     // --- depuis la popup / les options
     case 'ui:getState': {
       if (!fromExtensionPage) return { ok: false };
-      return { ok: true, state: await currentState(), settings: await loadSettings() };
+      const session = await getSession();
+      return { ok: true, state: await currentState(), settings: await loadSettings(),
+        detectedMode: session.detectedMode || 'auto' };
     }
     case 'ui:start':
       if (!fromExtensionPage) return { ok: false };

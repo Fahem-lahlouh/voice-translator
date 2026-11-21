@@ -2,6 +2,9 @@
 // Ni l'audio ni les transcriptions ne sont jamais enregistrés.
 
 import { glossaryToText, parseGlossaryText } from './glossary.js';
+import { PRONUNCIATION_HELP, parsePronunciationText } from './pronunciation.js';
+
+export const CONTENT_MODES = ['auto', 'film', 'formation', 'documentaire', 'conversation'];
 
 export const DEFAULT_PORT = 47831;
 
@@ -20,6 +23,8 @@ export const DEFAULTS = Object.freeze({
   serverPort: DEFAULT_PORT,
   token: '',
   glossaryText: null, // null = glossaire par défaut
+  pronunciationText: null, // null = aide seule (règles intégrées du serveur)
+  contentMode: 'auto', // auto = détecté d'après le site
 });
 
 const LIMITS = {
@@ -42,10 +47,11 @@ export function sanitize(raw) {
         s[k] = Math.min(hi, Math.max(lo, v));
       }
     } else if (typeof v === 'string') {
-      s[k] = v.slice(0, k === 'glossaryText' ? 40000 : 200);
+      s[k] = v.slice(0, (k === 'glossaryText' || k === 'pronunciationText') ? 40000 : 200);
     }
   }
   s.serverPort = Math.round(s.serverPort);
+  if (!CONTENT_MODES.includes(s.contentMode)) s.contentMode = 'auto';
   return s;
 }
 
@@ -73,10 +79,34 @@ export async function effectiveGlossaryText(settings) {
   return settings.glossaryText === null ? defaultGlossaryText() : settings.glossaryText;
 }
 
+export function effectivePronunciationText(settings) {
+  return settings.pronunciationText === null ? PRONUNCIATION_HELP : settings.pronunciationText;
+}
+
+// Type de contenu deviné d'après le site (mode « auto »). Volontairement
+// prudent : en cas de doute, aucun type n'est imposé.
+const SITE_MODES = [
+  [/(^|\.)(udemy|coursera|edx|pluralsight|khanacademy|openclassrooms|skillshare|egghead|frontendmasters|datacamp|codecademy)\./i, 'formation'],
+  [/(^|\.)linkedin\.com$/i, 'formation'],
+  [/(^|\.)(netflix|primevideo|disneyplus|max|hulu|crunchyroll|canalplus|mubi|paramountplus|appletv)\./i, 'film'],
+  [/(^|\.)(ted|arte|nationalgeographic|curiositystream)\./i, 'documentaire'],
+];
+
+export function detectContentMode(url) {
+  try {
+    const host = new URL(url).hostname;
+    for (const [rx, mode] of SITE_MODES) if (rx.test(host)) return mode;
+  } catch (_) { /* adresse illisible */ }
+  return 'auto';
+}
+
 // Réglages transmis au serveur local (jamais le jeton, envoyé à part).
-export async function toServerSettings(settings, videoRate = 1) {
+export async function toServerSettings(settings, videoRate = 1, detectedMode = 'auto') {
   const { entries } = parseGlossaryText(await effectiveGlossaryText(settings));
+  const { rules } = parsePronunciationText(effectivePronunciationText(settings));
   return {
+    contentMode: settings.contentMode === 'auto' ? detectedMode : settings.contentMode,
+    pronunciation: rules,
     source: settings.source,
     target: settings.target,
     voice: settings.voice,

@@ -13,6 +13,8 @@ import numpy as np
 
 from . import models
 from .config import Config
+from .idioms import Idioms
+from .pronunciation import Pronouncer
 from .textproc import (
     Glossary,
     looks_degenerate,
@@ -102,6 +104,24 @@ class Translation:
     note: str = ""
 
 
+_IDIOMS_CACHE: dict = {}
+
+
+def _idioms_for(glossary: Glossary) -> Idioms:
+    """Lexique d'expressions (intégré + celles du glossaire), mis en cache."""
+    key = tuple(glossary.idioms)
+    found = _IDIOMS_CACHE.get(key)
+    if found is None:
+        if len(_IDIOMS_CACHE) > 8:
+            _IDIOMS_CACHE.clear()
+        found = _IDIOMS_CACHE[key] = Idioms(list(key))
+    return found
+
+
+def _cap(s: str) -> str:
+    return s[:1].upper() + s[1:] if s[:1].islower() else s
+
+
 class Translator:
     def __init__(self, model_dir: Path, cfg: Config):
         import ctranslate2
@@ -129,6 +149,18 @@ class Translator:
         sentence = sentence.strip()
         if not sentence:
             return Translation("", False, "vide")
+        idioms = _idioms_for(glossary)
+        direct = idioms.whole(sentence) or idioms.wrapped(sentence)
+        if direct:
+            return Translation(glossary.apply_post(direct), True, "expression idiomatique")
+        spans = idioms.spans(sentence)
+        if spans:
+            # Expression dans la phrase : elle est remplacée par un jeton,
+            # comme les termes techniques, puis par son équivalent français.
+            prot = protect(sentence, glossary, code=True, extra=spans)
+            out, ok = restore(self._raw(prot.text), prot)
+            if ok and not looks_degenerate(sentence, out):
+                return Translation(_cap(glossary.apply_post(out)), True, "expression idiomatique")
         must_keep = protected_terms(sentence, glossary)
         # 1er essai : les traductions imposées sont insérées dans la phrase
         # source ; le reste est laissé au modèle, qui recopie en général
@@ -187,6 +219,9 @@ def trim_silence(pcm: bytes, sr: int, keep_s: float = 0.04) -> bytes:
     return a[lo:hi].tobytes()
 
 
+_DEFAULT_PRONOUNCER = Pronouncer()
+
+
 class Speaker:
     def __init__(self, models_dir: str):
         self.models_dir = models_dir
@@ -227,10 +262,15 @@ class Speaker:
     def preload(self, voice_id: str) -> None:
         self._load(voice_id)
 
-    def synthesize(self, text: str, voice_id: str, rate: float = 1.0) -> Optional[Speech]:
+    def synthesize(self, text: str, voice_id: str, rate: float = 1.0,
+                   pronouncer: Optional[Pronouncer] = None) -> Optional[Speech]:
         from piper import SynthesisConfig
 
-        spoken = speakable_fr(text)
+        # Le texte affiché n'est jamais modifié : seule sa version prononcée
+        # est adaptée (code lisible, sigles, noms, dictionnaire utilisateur).
+        # Dictionnaire d'abord : « iPhone » ou « GitHub » ne doivent pas être
+        # découpés comme des identifiants de code avant d'être reconnus.
+        spoken = speakable_fr((pronouncer or _DEFAULT_PRONOUNCER).apply(text))
         if not any(ch.isalnum() for ch in spoken):
             return None
         voice = self._load(voice_id)

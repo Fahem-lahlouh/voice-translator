@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import struct
 import threading
 import time
@@ -28,7 +29,15 @@ import numpy as np
 from .config import Config
 from .engines import VOICES, Engines
 from .segmenter import SAMPLE_RATE, Segmenter, SileroVad, SpeechSegment
+from .pronunciation import Pronouncer, parse_rules
 from .textproc import Glossary, ends_sentence, parse_glossary, split_sentences
+
+CONTENT_MODES = ("auto", "film", "formation", "documentaire", "conversation")
+# Durée cible des propositions selon le type de contenu : dialogues rapides
+# (film, conversation) découpés plus finement, explications plus longues.
+SEGMENT_TARGET = {"film": 2.0, "conversation": 2.0}
+_NAME_RX = re.compile(r"\b[A-Z][A-Z0-9]{1,5}\b|\b[A-Z][a-z]+[A-Z]\w*\b|(?<=[a-z,;] )[A-Z][a-z]{2,}(?: [A-Z][a-z]{2,})*")
+_NOT_NAMES = {"I", "OK", "The", "And", "But", "So", "Now", "Then", "This", "That", "Okay", "Yes", "No"}
 
 log = logging.getLogger("vt.pipeline")
 
@@ -47,10 +56,14 @@ class Settings:
     video_rate: float = 1.0  # vitesse de lecture de la vidéo
     auto_speedup: bool = True
     glossary: Glossary = None  # type: ignore[assignment]
+    content_mode: str = "auto"  # auto | film | formation | documentaire | conversation
+    pronouncer: Pronouncer = None  # type: ignore[assignment]
 
     def __post_init__(self):
         if self.glossary is None:
             self.glossary = Glossary([])
+        if self.pronouncer is None:
+            self.pronouncer = Pronouncer()
 
 
 def parse_settings(raw: dict, base: Optional[Settings] = None) -> Settings:
@@ -58,7 +71,8 @@ def parse_settings(raw: dict, base: Optional[Settings] = None) -> Settings:
     if not isinstance(raw, dict):
         raise ValueError("réglages : objet attendu")
     s = Settings() if base is None else Settings(**vars(base))
-    allowed = {"source", "target", "voice", "rate", "videoRate", "autoSpeedup", "glossary"}
+    allowed = {"source", "target", "voice", "rate", "videoRate", "autoSpeedup", "glossary",
+               "pronunciation", "contentMode"}
     unknown = set(raw) - allowed
     if unknown:
         raise ValueError(f"réglages inconnus : {', '.join(sorted(unknown))}")
@@ -83,6 +97,13 @@ def parse_settings(raw: dict, base: Optional[Settings] = None) -> Settings:
         s.auto_speedup = raw["autoSpeedup"]
     if "glossary" in raw:
         s.glossary = Glossary(parse_glossary(raw["glossary"]))
+    if "contentMode" in raw:
+        if raw["contentMode"] not in CONTENT_MODES:
+            raise ValueError("type de contenu inconnu")
+        s.content_mode = raw["contentMode"]
+    if "pronunciation" in raw or "contentMode" in raw:
+        rules = parse_rules(raw["pronunciation"]) if "pronunciation" in raw else s.pronouncer.user_rules
+        s.pronouncer = Pronouncer(rules, "" if s.content_mode == "auto" else s.content_mode)
     return s
 
 
@@ -135,6 +156,7 @@ class Session:
         self._carry_t1 = 0.0
         self._carry_wall = 0.0
         self._context = ""
+        self._names: dict = {}  # noms et sigles entendus dans la session -> occurrences
         # Statistiques.
         self.stats = {"segments": 0, "abandonnes": 0, "incertains": 0, "phrases": 0,
                       "audio_s": 0.0, "asr_s": 0.0, "mt_s": 0.0, "tts_s": 0.0, "voix_s": 0.0}
@@ -160,11 +182,24 @@ class Session:
     # ----------------------------------------------------------- commandes
     def start(self, epoch: int, settings: Settings) -> None:
         self.settings = settings
+        self._apply_content_mode()
+        self._names = {}  # nouvelle session : nouvelle mémoire des noms
         self._reset_to(epoch)
         self.active = True
 
     def update_settings(self, settings: Settings) -> None:
         self.settings = settings
+        self._apply_content_mode()
+
+    def _base_segment_target(self) -> float:
+        return SEGMENT_TARGET.get(self.settings.content_mode, self.cfg.soft_max_segment_s)
+
+    def _apply_content_mode(self) -> None:
+        base = self._base_segment_target()
+        if self.segmenter.soft_max_s < base or self._asr_call_ema is None:
+            self.segmenter.soft_max_s = base
+            self.segmenter.hard_max_s = max(self.cfg.hard_max_segment_s - (self.cfg.soft_max_segment_s - base),
+                                            base + 2.0)
 
     def reset(self, epoch: int) -> None:
         """Jette tout le travail en cours (changement de vidéo, saut, pause)."""
@@ -331,7 +366,8 @@ class Session:
         st = self.settings
         fast = backlog > self.cfg.fast_mode_backlog_s
         t = time.perf_counter()
-        prompt = (st.glossary.asr_prompt() + " " + self._context[-200:]).strip()
+        prompt = (st.glossary.asr_prompt(extra=self._session_names()) + " "
+                  + self._context[-200:]).strip()
         res = eng.recognizer.transcribe(seg.audio, prompt=prompt, fast=fast, language=st.source)
         asr_s = time.perf_counter() - t
         dur = seg.t1 - seg.t0
@@ -354,6 +390,7 @@ class Session:
             return
         text = st.glossary.correct_transcript(res.text)
         self._context = (self._context + " " + text)[-400:]
+        self._remember_names(text)
         t0 = seg.t0
         if self._carry:
             text = self._carry + " " + text
@@ -376,6 +413,24 @@ class Session:
                                   asr_ms=int(asr_s * 1000), conf=conf, sentences=sentences,
                                   fast=fast)
 
+    def _remember_names(self, text: str) -> None:
+        """Mémoire de session : noms propres, marques et sigles entendus.
+
+        Ils sont redonnés au moteur de reconnaissance comme amorce, ce qui
+        stabilise leur orthographe d'une phrase à l'autre (« SAP » écrit
+        toujours de la même façon une fois entendu clairement)."""
+        for m in _NAME_RX.finditer(text):
+            n = m.group(0)
+            if n in _NOT_NAMES:
+                continue
+            self._names[n] = self._names.get(n, 0) + 1
+        if len(self._names) > 60:  # garder les plus fréquents
+            keep = sorted(self._names.items(), key=lambda kv: -kv[1])[:40]
+            self._names = dict(keep)
+
+    def _session_names(self) -> list:
+        return [n for n, c in sorted(self._names.items(), key=lambda kv: -kv[1]) if c >= 2][:15]
+
     def _adapt_segments(self, asr_s: float) -> None:
         """Allonge les propositions si la reconnaissance est lente sur ce PC.
 
@@ -387,9 +442,10 @@ class Session:
         self._asr_call_ema = asr_s if e is None else 0.7 * e + 0.3 * asr_s
         if not self.cfg.adaptive_segments:
             return
-        target = min(8.0, max(self.cfg.soft_max_segment_s, 3.5 * self._asr_call_ema))
+        base = self._base_segment_target()
+        target = min(8.0, max(base, 3.5 * self._asr_call_ema))
         self.segmenter.soft_max_s = target
-        self.segmenter.hard_max_s = max(self.cfg.hard_max_segment_s, target + 2.5)
+        self.segmenter.hard_max_s = max(base + 2.5, target + 2.5)
 
     def _watch_asr_speed(self, asr_s: float, dur: float) -> None:
         """Si la reconnaissance reste trop lente malgré des propositions
@@ -517,7 +573,8 @@ class Session:
             try:
                 rate, lag, boost = self._speech_rate(item)
                 t = time.perf_counter()
-                speech = self.engines.speaker.synthesize(item.text, self.settings.voice, rate)
+                speech = self.engines.speaker.synthesize(item.text, self.settings.voice, rate,
+                                                         self.settings.pronouncer)
                 tts_s = time.perf_counter() - t
                 self.stats["tts_s"] += tts_s
                 if speech is None or item.epoch != self.epoch:

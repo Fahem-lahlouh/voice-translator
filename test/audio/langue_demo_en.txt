@@ -1,0 +1,9 @@
+Hello everyone, and welcome back.
+Our company migrated its finance department to SAP last year.
+This system allows us to manage everything in one place.
+SAP is the most widely used ERP in Europe, and the API is quite simple.
+Honestly, setting it up was a piece of cake.
+NASA and the FBI both use similar tools.
+It's raining cats and dogs outside.
+You're kidding me!
+Well, let's call it a day, guys.

@@ -150,6 +150,32 @@ après une coupe forcée a été mal reconnu. Il a été rejeté (rien d'invent�
 mais quelques mots ont été perdus. C'est la raison du compromis 2,5 s / 5 s
 plutôt que 2 s / 4 s (délai médian 4,6 s mesuré avec 2 s / 4 s).
 
+## 3 ter. Étape « langue » (100 % locale)
+
+Extrait `test/audio/langue_demo_en.ogg` (voix de synthèse, domaine public),
+passé par toute la chaîne (`mesure_latence.py`) :
+
+| Anglais reconnu | Français produit | Prononcé |
+| --- | --- | --- |
+| SAP is the most widely used ERP in Europe. | SAP est l'ERP le plus utilisé en Europe. | « èss-a-pé … l'euh-èr-pé » |
+| And the API is quite simple. | Et l'API est assez simple. | « l'a-pé-i » |
+| NASA and the FBI both use similar tools. | La NASA et le FBI utilisent … | « nasa … èf-bé-i » |
+| Setting it up was a piece of cake. | La configuration était du gâteau. | |
+| It's raining cats and dogs outside. | Il pleut des cordes dehors. | |
+| You're kidding me. | Sans blague ! | |
+| Well, let's call it a day guys. | Eh bien, on s'arrête là pour aujourd'hui, les gars. | |
+
+Avant cette étape : « Il pleut des chats et des chiens », « C'est un jour »,
+« l'ERP » lu « lèrp », « CIA » lu « séya ». Délai médian sur cet extrait :
+3,5 s depuis le début de la parole, première voix à 2,4 s.
+
+Limites : seules les expressions connues (ou ajoutées au glossaire) sont
+reconnues ; une expression à double sens peut être mal interprétée ; une
+proposition coupée en plein milieu peut être maladroite (« To SAP last
+year » → « Au SAP l'an dernier »). Les petits modèles de langage locaux
+testés (Qwen 2.5 1,5B et 3B) ne faisaient pas mieux, et un modèle 7B ne
+tient pas dans la mémoire d'un PC courant.
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |

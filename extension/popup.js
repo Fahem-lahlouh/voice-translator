@@ -32,6 +32,12 @@ let state = null;
 let currentTab = null;
 let busy = false;
 let localError = null;
+let detectedMode = 'auto';
+
+const MODE_LABELS = {
+  film: 'film ou série', formation: 'formation', documentaire: 'documentaire',
+  conversation: 'conversation',
+};
 
 function sw(type, payload = {}) {
   return chrome.runtime.sendMessage({ target: 'sw', type, ...payload });
@@ -143,6 +149,12 @@ function renderSettings() {
   for (const id of ['duck', 'subtitles', 'subtitlesEnglish', 'catchupPause', 'autoSpeedup']) $(id).checked = settings[id];
   for (const id of ['rate', 'originalVolume', 'frenchVolume']) $(id).value = settings[id];
   $('source').value = settings.source;
+  $('contentMode').value = settings.contentMode;
+  $('modeInfo').textContent = settings.contentMode === 'auto'
+    ? (detectedMode !== 'auto'
+      ? `Détecté d'après le site : ${MODE_LABELS[detectedMode]}.`
+      : 'Réglage général, adapté à tous les contenus.')
+    : 'Choisi manuellement.';
   $('target').value = settings.target;
   $('subtitlesEnglish').disabled = !settings.subtitles;
   $('oRate').textContent = `× ${settings.rate.toFixed(2).replace('.', ',')}`;
@@ -178,6 +190,7 @@ async function refresh() {
   if (res && res.ok) {
     state = res.state;
     settings = res.settings;
+    detectedMode = res.detectedMode || 'auto';
   }
   renderSettings();
   render();
@@ -203,6 +216,7 @@ function bind() {
   }
   $('voice').addEventListener('change', (e) => update({ voice: e.target.value }));
   $('source').addEventListener('change', (e) => update({ source: e.target.value }));
+  $('contentMode').addEventListener('change', (e) => update({ contentMode: e.target.value }));
   $('target').addEventListener('change', (e) => update({ target: e.target.value }));
 
   $('udemyGrant').addEventListener('click', async () => {

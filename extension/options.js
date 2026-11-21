@@ -1,7 +1,10 @@
 // Page d'options : serveur local et glossaire.
 
 import { parseGlossaryText } from './lib/glossary.js';
-import { DEFAULTS, defaultGlossaryText, effectiveGlossaryText, loadSettings, saveSettings } from './lib/settings.js';
+import { parsePronunciationText, PRONUNCIATION_HELP } from './lib/pronunciation.js';
+import {
+  DEFAULTS, defaultGlossaryText, effectiveGlossaryText, effectivePronunciationText, loadSettings, saveSettings,
+} from './lib/settings.js';
 
 const $ = (id) => document.getElementById(id);
 let settings = null;
@@ -26,6 +29,8 @@ async function load() {
   $('serverPort').value = settings.serverPort;
   $('token').value = settings.token;
   $('glossary').value = await effectiveGlossaryText(settings);
+  $('pronunciation').value = effectivePronunciationText(settings);
+  validatePron();
   $('savedInfo').textContent = settings.glossaryText === null
     ? 'Glossaire par défaut (TIBCO) en cours d\'utilisation.' : 'Glossaire personnalisé.';
   validate();
@@ -52,6 +57,25 @@ async function save() {
   $('savedInfo').textContent = isDefault ? 'Glossaire par défaut (TIBCO) en cours d\'utilisation.' : 'Glossaire personnalisé.';
   note('Réglages enregistrés. Ils s\'appliquent immédiatement, même pendant une traduction en cours.');
 }
+
+function validatePron() {
+  const { rules, errors } = parsePronunciationText($('pronunciation').value);
+  $('pcount').textContent = `${rules.length} règle(s) personnelle(s)`;
+  $('pronErrors').hidden = !errors.length;
+  $('pronErrors').textContent = errors.join(' ');
+  return errors;
+}
+
+$('pronunciation').addEventListener('input', validatePron);
+$('savePron').addEventListener('click', async () => {
+  if (validatePron().length) {
+    note('Les règles de prononciation contiennent des erreurs : corrigez-les avant d\'enregistrer.', 'error');
+    return;
+  }
+  const text = $('pronunciation').value;
+  settings = await saveSettings({ pronunciationText: text.trim() === PRONUNCIATION_HELP.trim() ? null : text });
+  note('Prononciation enregistrée. Elle s\'applique immédiatement, même pendant une traduction en cours.');
+});
 
 $('save').addEventListener('click', save);
 $('glossary').addEventListener('input', validate);

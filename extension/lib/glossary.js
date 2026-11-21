@@ -4,6 +4,7 @@
 //                                     mal reconnues à corriger
 //   shared resource = ressource partagée     traduction imposée
 //   fr: conférence => leçon           remplacement dans le texte français
+//   expr: hit the sack => aller se coucher    expression idiomatique
 //   # commentaire
 
 export const MAX_ENTRIES = 300;
@@ -17,6 +18,11 @@ export function parseGlossaryText(text) {
     const line = raw.trim();
     if (!line || line.startsWith('#')) return;
     const n = i + 1;
+    const idiom = line.match(/^expr\s*:\s*(.+?)\s*=>\s*(.+)$/i);
+    if (idiom) {
+      entries.push({ kind: 'idiom', src: idiom[1].trim(), dst: idiom[2].trim(), aliases: [] });
+      return;
+    }
     const post = line.match(/^fr\s*:\s*(.+?)\s*=>\s*(.+)$/i);
     if (post) {
       entries.push({ kind: 'post', src: post[1].trim(), dst: post[2].trim(), aliases: [] });
@@ -56,11 +62,16 @@ export function glossaryToText(entries) {
     '#   Terme | forme mal reconnue, autre forme     → terme conservé tel quel',
     '#   english term = traduction française         → traduction imposée',
     '#   fr: mot français => autre mot               → remplacement après traduction',
+    '#   expr: expression anglaise => équivalent      → expression idiomatique',
     '',
   ];
   for (const e of entries) {
     if (e.kind === 'post') {
       out.push(`fr: ${e.src} => ${e.dst}`);
+      continue;
+    }
+    if (e.kind === 'idiom') {
+      out.push(`expr: ${e.src} => ${e.dst}`);
       continue;
     }
     let line = e.src;

@@ -41,6 +41,8 @@
     <code>tibko</code> sont les formes mal reconnues à corriger.</li>
     <li><code>shared resource = ressource partagée</code> — traduction imposée.</li>
     <li><code>fr: conférence =&gt; leçon</code> — remplacement appliqué au texte français.</li>
+    <li><code>expr: hit the road =&gt; prendre la route</code> — expression idiomatique à
+    traduire par son équivalent (une centaine d'expressions courantes sont déjà connues).</li>
     <li><code># …</code> — commentaire.</li>
   </ul>
   <p class="hint">Les identifiants, chemins, commandes et noms de méthodes
@@ -53,6 +55,28 @@
     <button type="button" id="save" class="primary">Enregistrer</button>
     <button type="button" id="reset">Revenir au glossaire par défaut</button>
     <span id="savedInfo" class="hint"></span>
+  </div>
+
+  <h2>Prononciation</h2>
+  <p>Comment la voix française doit prononcer certains termes. Seule la voix
+  est concernée : les sous-titres et les transcriptions gardent l'orthographe
+  d'origine.</p>
+  <ul class="compact">
+    <li><code>SAP = épeler</code> — lettres prononcées à la française (« èss-a-pé »).</li>
+    <li><code>NASA = mot</code> — lu comme un mot.</li>
+    <li><code>Kubernetes = kou beur né tisse</code> — texte à prononcer.</li>
+    <li><code>IT = épeler @formation</code> — seulement pour ce type de contenu
+    (<code>film</code>, <code>formation</code>, <code>documentaire</code>, <code>conversation</code>).</li>
+  </ul>
+  <p class="hint">Déjà gérés automatiquement : sigles de 2 ou 3 lettres épelés (FBI,
+  SAP, ERP, API, y compris après « l' »), sigles prononçables lus comme des mots
+  (NASA, OTAN, UNESCO), chiffres romains (Louis XIV) et une vingtaine de noms
+  courants (Wi-Fi, iPhone, GitHub, YouTube…).</p>
+  <label for="pronunciation" class="hint">Règles de prononciation (<span id="pcount">0</span>)</label>
+  <textarea id="pronunciation" spellcheck="false" aria-describedby="pronErrors" style="min-height:160px"></textarea>
+  <div id="pronErrors" class="notice error" role="alert" hidden></div>
+  <div class="actions">
+    <button type="button" id="savePron" class="primary">Enregistrer la prononciation</button>
   </div>
 
   <h2>Confidentialité</h2>

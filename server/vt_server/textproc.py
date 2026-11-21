@@ -86,9 +86,9 @@ def parse_glossary(raw) -> list:
         dst = item.get("dst", "")
         aliases = item.get("aliases", [])
         kind = item.get("kind", "term")
-        if kind not in ("term", "post"):
+        if kind not in ("term", "post", "idiom"):
             raise ValueError("glossaire : type d'entrée inconnu")
-        if kind == "post" and (not isinstance(dst, str) or not dst.strip()):
+        if kind in ("post", "idiom") and (not isinstance(dst, str) or not dst.strip()):
             raise ValueError("glossaire : remplacement sans texte cible")
         if not isinstance(src, str) or not src.strip():
             raise ValueError("glossaire : terme source manquant")
@@ -117,6 +117,7 @@ class Glossary:
         all_entries = list(entries or [])
         self.entries = [e for e in all_entries if e.kind == "term"]
         self.post = [e for e in all_entries if e.kind == "post"]
+        self.idioms = [(e.src, e.dst) for e in all_entries if e.kind == "idiom"]
         self._alias_rx = []
         for e in self.entries:
             for a in e.aliases:
@@ -137,16 +138,22 @@ class Glossary:
             text = rx.sub(lambda m, g=good: g, text)
         return text
 
-    def asr_prompt(self, limit: int = 30) -> str:
+    def asr_prompt(self, limit: int = 30, extra: list | None = None) -> str:
         """Phrase-amorce donnée au moteur de reconnaissance.
 
         Une phrase ponctuée contenant les noms propres du glossaire améliore
         leur reconnaissance sans dégrader la ponctuation (contrairement à une
         simple liste de mots-clés, d'après nos essais)."""
         names = [e.src for e in self.entries if any(ch.isupper() for ch in e.src)][:limit]
+        for n in extra or []:
+            if n not in names and len(names) < limit + 15:
+                names.append(n)
         if not names:
             return ""
-        return "This course covers " + ", ".join(names) + "."
+        # Formulation neutre (tous contenus) ; comparée sur l'extrait de test,
+        # elle reconnaît les noms aussi bien que « This course covers… », alors
+        # que « Glossary: … » dégradait la reconnaissance (« OpenTico »).
+        return "This video mentions " + ", ".join(names) + "."
 
     def find(self, text: str, entries_filter=None) -> list:
         """Occurrences (début, fin, entrée) sans chevauchement."""
@@ -236,10 +243,14 @@ def placeholder(i: int) -> str:
 _PLACEHOLDER_RX = re.compile(r"ZX(\d+)Q")
 
 
-def protect(text: str, glossary: Glossary, *, code: bool) -> Protected:
+def protect(text: str, glossary: Glossary, *, code: bool, extra: list | None = None) -> Protected:
     """Remplace par des jetons les termes du glossaire (et, si code=True,
-    les passages ressemblant à du code)."""
-    spans = [(a, b, e.src if e.keep else e.dst) for a, b, e in glossary.find(text)]
+    les passages ressemblant à du code). `extra` : passages prioritaires
+    [(début, fin, texte final)], par exemple des expressions idiomatiques."""
+    spans = list(extra or [])
+    for a, b, e in glossary.find(text):
+        if not any(a < y and x < b for x, y, _ in spans):
+            spans.append((a, b, e.src if e.keep else e.dst))
     if code:
         for a, b in find_code_spans(text):
             if not any(a < y and x < b for x, y, _ in spans):

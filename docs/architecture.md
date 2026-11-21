@@ -278,7 +278,18 @@ Mécanismes :
    URL, appels `machin()`. Inutile de les lister dans le glossaire.
 6. **Rejet des traductions incohérentes** (répétitions, longueur aberrante) :
    la phrase n'est alors pas prononcée.
-7. **Texte prononçable** : avant la synthèse, `getCustomerById` devient
+7. **Expressions idiomatiques** (`server/vt_server/idioms.py`) : phrase
+   entière → équivalent direct ; expression dans une phrase → jeton puis
+   équivalent ; mots d'enrobage (« well », « guys ») traduits par une table.
+8. **Prononciation** (`server/vt_server/pronunciation.py`) : dictionnaire
+   utilisateur, puis dictionnaire intégré vérifié phonème par phonème, puis
+   règle générale (sigle de 2–3 lettres épelé en noms de lettres, ce qui
+   résiste aux élisions ; à partir de 4 lettres, laissé au moteur vocal).
+   Appliqué **uniquement** au texte envoyé à la voix.
+9. **Mémoire de session** : noms propres et sigles entendus au moins deux
+   fois sont redonnés au moteur de reconnaissance pour stabiliser leur
+   orthographe.
+10. **Texte prononçable** : avant la synthèse, `getCustomerById` devient
    « get Customer By Id », `C:\tibco\bw\logs` devient « C tibco bw logs »,
    `->` devient « vers »… Le texte des sous-titres, lui, n'est pas modifié.
 

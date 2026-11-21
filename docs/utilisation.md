@@ -60,6 +60,28 @@ Des messages apparaissent aussi quand des passages ont été ignorés (PC trop
 lent), sautés (voix trop en retard) ou jugés trop incertains pour être
 traduits.
 
+## Type de contenu
+
+Par défaut **automatique** : d'après le site (Udemy, Coursera… → formation ;
+Netflix, Prime Video… → film ; TED, Arte… → documentaire), sinon un réglage
+général valable pour tout contenu. Vous pouvez le forcer dans la fenêtre de
+l'extension. Il règle la finesse du découpage (dialogues plus réactifs pour
+un film ou une conversation) et les règles de prononciation propres à un
+domaine.
+
+## Expressions et sigles
+
+* Une centaine d'**expressions courantes** sont traduites par leur
+  équivalent français (« It's raining cats and dogs » → « Il pleut des
+  cordes », « Let's call it a day » → « On s'arrête là pour aujourd'hui »).
+  Vous pouvez en ajouter dans le glossaire :
+  `expr: hit the road => prendre la route`.
+* Les **sigles** sont prononcés à la française : épelés quand c'est l'usage
+  (SAP, ERP, API, FBI, y compris après « l' »), lus comme un mot sinon
+  (NASA, OTAN). Une section **Prononciation** des options permet de corriger
+  un cas : `SAP = épeler`, `NASA = mot`, `Kubernetes = kou beur né tisse`.
+  Seule la voix change : les sous-titres gardent l'orthographe d'origine.
+
 ## Le glossaire
 
 Options de l'extension (lien en bas de la fenêtre, ou
