@@ -132,6 +132,11 @@ export async function attach(urlPart, { timeout = 15000 } = {}) {
       await sleep(600);
       try { ws.close(); } catch (_) { /* déjà fermé */ }
     },
+    async screenshot(file) {
+      const msg = await send('Page.captureScreenshot', { format: 'png' });
+      if (!msg.result) throw new Error(`${urlPart} : capture impossible`);
+      fs.writeFileSync(file, Buffer.from(msg.result.data, 'base64'));
+    },
     close: () => { try { ws.close(); } catch (_) { /* déjà fermé */ } },
   };
 }

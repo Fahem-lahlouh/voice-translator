@@ -37,6 +37,9 @@ def _parser() -> argparse.ArgumentParser:
                    help="tester la chaîne complète sur un fichier audio anglais (WAV, OGG, MP3…), sans navigateur")
     g.add_argument("--bench", action="store_true",
                    help="mesurer les performances de ce PC et recommander un profil")
+    g.add_argument("--diagnostic", metavar="RAPPORT",
+                   help="vérification complète du PC, rapport écrit dans ce fichier")
+    p.add_argument("--sans-resume", action="store_true", help="avec --diagnostic : ne pas mesurer le résumé")
     p.add_argument("--out", help="avec --self-test : fichier WAV français à écrire")
     p.add_argument("--glossary", help="avec --self-test : glossaire JSON "
                    "(défaut : extension/glossaire-defaut.json)")
@@ -324,6 +327,9 @@ def main(argv=None) -> int:
         return cmd_self_test(cfg, args.self_test, args.out, gl)
     if args.bench:
         return cmd_bench(cfg)
+    if args.diagnostic:
+        from .diagnostic import run as diagnostic
+        return diagnostic(cfg, args.diagnostic, with_summary=not args.sans_resume)
 
     from .engines import Engines
     from .server import LocalServer

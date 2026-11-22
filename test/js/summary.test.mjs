@@ -43,3 +43,11 @@ test('vérification : des inventions grossières sont signalées', () => {
   assert.equal(supportFor('Le fantôme joue du piano chaque nuit à minuit dans la bibliothèque.', SEGS).doubtful, true);
   assert.deepEqual(supportFor('Le château appartient à Napoléon.', SEGS).absents, ['Napoléon']);
 });
+
+test('termes clés : noms après une civilité, pas de mots de dialogue', async () => {
+  const fs = await import('node:fs');
+  const segs = JSON.parse(fs.readFileSync(new URL('./donnees/canterville_10min.json', import.meta.url), 'utf8'));
+  const terms = keyTerms(segs, 12);
+  assert.ok(terms.includes('Otis'), terms.join(', '));
+  for (const mot of ['mme', 'dit', 'otis']) assert.ok(!terms.includes(mot), `${mot} dans ${terms.join(', ')}`);
+});

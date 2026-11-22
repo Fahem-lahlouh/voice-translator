@@ -14,7 +14,9 @@ const STOP = new Set((
   + 'c j n s qu m t quand comment pourquoi tres puis ensuite donc meme autre autres chaque quelque quelques '
   + 'vers chez apres avant depuis pendant oui non voici voila nous allons va vais vont faut tres beaucoup '
   + 'the a an and or of to in on at for is are was were be been it this that with as by from we you they '
-  + 'he she i our your their his her its so then now well just like going get got do does did not no yes'
+  + 'he she i our your their his her its so then now well just like going get got do does did not no yes '
+  // Dialogues : verbes de parole et civilités, sans intérêt comme termes clés.
+  + 'mme mlle mr mrs dit dis disait dire demande demanda repondit repond ecria crie oh ah'
 ).split(' '));
 
 export function normalize(t) {
@@ -37,7 +39,11 @@ export function keyTerms(segs, limit = 12) {
     words.forEach((w, i) => {
       const clean = w.replace(/^[^\w]+|[^\w.+#-]+$/g, '');
       const isAcronym = /^[A-Z][A-Z0-9]{1,6}s?$/.test(clean);
-      const isName = /^[A-Z][a-z]+[A-Z]?\w*$/.test(clean) && i > 0 && !/[.!?]$/.test(words[i - 1]);
+      // Un point avant le mot marque une fin de phrase, sauf après une
+      // civilité (« Mr. Otis ») ou une initiale (« Hiram B. Otis »).
+      const prev = i > 0 ? words[i - 1] : '';
+      const afterAbbrev = HONORIFICS.has(prev.replace(/\.$/, '')) || /^[A-Z]\.$/.test(prev);
+      const isName = /^[A-Z][a-z]+[A-Z]?\w*$/.test(clean) && i > 0 && (!/[.!?]$/.test(prev) || afterAbbrev);
       if ((isAcronym || isName) && clean.length > 1 && !HONORIFICS.has(clean)) {
         names.set(clean, (names.get(clean) || 0) + 1);
       }

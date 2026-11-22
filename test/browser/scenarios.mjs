@@ -1002,9 +1002,60 @@ TESTS.resume = async () => {
   } finally { await ctx.close(); await server.stop(); }
 };
 
+// Captures d'écran pour le guide de test (lancé seulement si demandé :
+// `node test/browser/scenarios.mjs captures`).
+TESTS.captures = async () => {
+  const dir = path.join(OUT, 'captures');
+  fs.mkdirSync(dir, { recursive: true });
+  const S = await session();
+  try {
+    const popup = await S.popup();
+    await startDubbing(S, popup);
+    await instrument(S);
+    await waitReady(S);
+    await S.page.evaluate(() => document.getElementById('play').click());
+    await waitSegment(S, { minFr: 3, timeout: 120000 });
+    await H.sleep(2500);
+    const pop = await S.popup();
+    await H.sleep(800);
+    await pop.screenshot(path.join(dir, '1-fenetre-extension.png'));
+    await S.page.screenshot({ path: path.join(dir, '2-sous-titres-sur-la-page.png') });
+    H.record('captures du doublage en direct', true);
+
+    // Bibliothèque : une vraie vidéo de 10 min (Canterville) en plus.
+    const lib = await S.ctx.newPage();
+    const extId = new URL(S.sw.url()).host;
+    await lib.setViewportSize({ width: 1100, height: 850 });
+    await lib.goto(`chrome-extension://${extId}/library.html`);
+    const segs = JSON.parse(fs.readFileSync(path.join(H.ROOT, 'test/js/donnees/canterville_10min.json'), 'utf8'));
+    await lib.evaluate(async (segs) => {
+      const st = await import('./lib/store.js');
+      await st.upsertVideo({ id: 'youtube:cant', title: 'The Canterville Ghost — chapitre 1',
+        url: 'https://www.youtube.com/watch?v=cant', site: 'youtube', duration: 600 });
+      for (const s of segs) await st.addSegment('youtube:cant', s);
+    }, segs);
+    await lib.reload();
+    await lib.waitForSelector('#videos li');
+    await lib.screenshot({ path: path.join(dir, '3-bibliotheque.png') });
+    await lib.click('text=The Canterville Ghost');
+    await lib.waitForSelector('#segments li');
+    await lib.screenshot({ path: path.join(dir, '4-transcription.png') });
+    await lib.click('#tabSummary');
+    await lib.waitForSelector('#express p.extrait');
+    await lib.waitForFunction(() => document.querySelectorAll('#sumModel option').length > 0, null, { timeout: 60000 });
+    await lib.click('#sumGo');
+    await H.sleep(8000);
+    await lib.screenshot({ path: path.join(dir, '5-resume-en-cours.png') });
+    await lib.waitForSelector('#ai p.avert', { timeout: 600000 });
+    await lib.screenshot({ path: path.join(dir, '6-resume.png'), fullPage: true });
+    H.record('captures de la bibliothèque et du résumé', true, dir);
+  } finally { await S.close(); }
+};
+
 // --------------------------------------------------------------------- run
 
-const names = Object.keys(TESTS).filter(want);
+const MANUAL = new Set(['captures']); // lancés seulement sur demande
+const names = Object.keys(TESTS).filter((n) => (only.length ? want(n) : !MANUAL.has(n)));
 console.log(`Scénarios : ${names.join(', ')}\n`);
 for (const name of names) {
   console.log(`--- ${name} ---`);

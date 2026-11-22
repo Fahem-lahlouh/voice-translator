@@ -101,6 +101,18 @@ def _clean_item(line: str) -> str:
     return item.strip(" *")
 
 
+# Phrases où le modèle parle de son propre travail au lieu de la vidéo
+# (« Lord X n'est pas mentionné dans ce résumé ») : jamais affichées.
+_META = re.compile(
+    r"\b(ce|cet|cette)\s+(résumé|resume|texte|transcription|extrait|document)\b"
+    r"|n'est pas (mentionné|évoqué|précisé)|ne (sont|est) pas mentionné|aucune information",
+    re.IGNORECASE)
+
+
+def is_meta(item: str) -> bool:
+    return bool(_META.search(item))
+
+
 def parse_sections(text: str) -> dict:
     """Lit une réponse au format « TITRE : … / RÉSUMÉ : … / POINTS : - … »."""
     out = {"titre": "", "resume": "", "points": []}
@@ -129,6 +141,7 @@ def parse_sections(text: str) -> dict:
         elif current in ("titre", "resume"):
             out[current] = (out[current] + " " + line).strip()
     out["titre"] = out["titre"].strip(" *#\"«»")
+    out["points"] = [p for p in out["points"] if not is_meta(p)]
     return out
 
 

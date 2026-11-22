@@ -288,6 +288,10 @@ nom « Canterville », mal reconnu une fois en « Cantoville », devient une
 deuxième maison dans le résumé. Le contrôle d'appui ne détecte pas ce
 genre d'erreur (le mot fautif existe bien dans la transcription).
 
+Chargement du modèle : 6 à 9 s quand le fichier est déjà en mémoire cache du
+système, **87 s** au premier chargement après démarrage (lecture de 3,2 Go
+sur le disque) ; Qwen3 1.7B : 48 s à froid, puis résumé en 68 s.
+
 Suite complète de bout en bout après cette étape : **84/84** vérifications
 réussies (tous les scénarios, y compris ceux des étapes précédentes).
 
@@ -322,6 +326,7 @@ portait pas l'identifiant de requête, la page attendait indéfiniment.
 | Quoi | Où | Commande |
 | --- | --- | --- |
 | Unitaires + chaîne complète | Windows | `scripts\lancer-tests.bat` |
+| Vérification complète + rapport à transmettre | Windows | `scripts\verifier-pc.bat` (écrit `rapport-pc.txt`) |
 | Unitaires | Linux | `cd server && .venv/bin/python -m unittest discover -s tests -t .` |
 | Bout en bout dans Chrome | Linux avec Xvfb | `server/.venv/bin/pip install python-xlib` puis `xvfb-run -a node test/browser/scenarios.mjs` (ajoutez des noms de scénarios pour n'en lancer que certains) |
 

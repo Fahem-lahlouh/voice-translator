@@ -42,5 +42,17 @@ class TestLecture(unittest.TestCase):
         self.assertEqual(r["points"], ["un", "deux"])
 
 
+class TestPointsHorsSujet(unittest.TestCase):
+    def test_remarques_du_modele_sur_son_travail_ecartees(self):
+        from vt_server.summarizer import is_meta, parse_sections
+        self.assertTrue(is_meta("Lord Canterville n'est pas mentionné dans ce résumé."))
+        self.assertTrue(is_meta("Ce texte ne donne aucune information sur la date."))
+        self.assertFalse(is_meta("Le ministre achète la maison malgré les rumeurs."))
+        self.assertFalse(is_meta("On configure le texte du message JMS."))
+        sec = parse_sections("RÉSUMÉ : Une histoire.\nPOINTS :\n- Otis achète la maison.\n"
+                             "- Lord Canterville n'est pas mentionné dans ce résumé.")
+        self.assertEqual(sec["points"], ["Otis achète la maison."])
+
+
 if __name__ == "__main__":
     unittest.main()

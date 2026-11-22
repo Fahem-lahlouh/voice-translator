@@ -99,8 +99,9 @@ Deux résumés, tous deux **gratuits et calculés sur ce PC** :
 
 Le modèle d'IA (≈ 3,2 Go, ou ≈ 1,7 Go pour le modèle léger) est téléchargé
 **une fois**, après confirmation, la première fois que vous lancez un résumé.
-Comptez **quelques minutes** de calcul pour 10 minutes de vidéo sur un
-portable (voir [tests.md](tests.md)) ; le doublage en cours n'est pas
+Le premier résumé après le démarrage du serveur attend en plus le chargement
+du modèle (jusqu'à 1 à 2 minutes). Comptez **quelques minutes** de calcul
+pour 10 minutes de vidéo sur un portable (voir [tests.md](tests.md)) ; le doublage en cours n'est pas
 interrompu, mais il peut ralentir pendant ce temps. « Annuler » arrête le
 calcul.
 

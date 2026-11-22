@@ -118,6 +118,19 @@ la traduction.
 
 Si rien ne se passe, consultez **[depannage.md](depannage.md)**.
 
+## 6 bis. Vérifier votre PC en un clic
+
+Double-cliquez sur **`scripts\verifier-pc.bat`** (10 à 20 minutes, fermez
+d'abord la fenêtre du serveur). Il enchaîne : caractéristiques du PC,
+bibliothèques et modèles installés, tests automatiques, doublage d'un extrait
+réel (le résultat est écrit dans `test\out\voix-francaise.wav`), mesure de
+chaque profil avec une recommandation et, si un modèle de résumé est déjà
+téléchargé, la durée d'un résumé.
+
+Tout est écrit dans **`rapport-pc.txt`** à la racine du projet (il s'ouvre à
+la fin). Ce rapport ne contient ni votre nom d'utilisateur ni vos dossiers :
+vous pouvez le transmettre tel quel pour obtenir de l'aide.
+
 ## 7. Changer de profil plus tard
 
 Modifiez `server\config.json` :

@@ -9,3 +9,4 @@ __pycache__/
 test/out/
 node_modules/
 *.part
+rapport-pc.txt
