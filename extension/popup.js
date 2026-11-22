@@ -143,6 +143,11 @@ function render() {
   } else if (s.running && lib && !lib.enabled) {
     libText = 'Bibliothèque désactivée : rien n\'est enregistré (voir les options).';
   }
+  const sy = s.sync;
+  if (s.running && sy && sy.enabled && sy.played) {
+    libText += `${libText ? ' · ' : ''}Lecture synchronisée : ${sy.played} phrase(s) calée(s)`
+      + (sy.avgError !== null ? `, écart moyen ${fmt(sy.avgError)} s` : '');
+  }
   $('libInfo').textContent = libText;
   $('libInfo').hidden = !libText;
 
@@ -160,7 +165,9 @@ function render() {
 const fmt = (x) => (Math.round(x * 10) / 10).toLocaleString('fr-FR', { minimumFractionDigits: 1 });
 
 function renderSettings() {
-  for (const id of ['duck', 'subtitles', 'subtitlesEnglish', 'catchupPause', 'autoSpeedup']) $(id).checked = settings[id];
+  for (const id of ['duck', 'subtitles', 'subtitlesEnglish', 'catchupPause', 'autoSpeedup', 'syncPlayback']) {
+    $(id).checked = settings[id];
+  }
   for (const id of ['rate', 'originalVolume', 'frenchVolume']) $(id).value = settings[id];
   $('source').value = settings.source;
   $('contentMode').value = settings.contentMode;
@@ -222,7 +229,7 @@ function bind() {
   });
   $('testVoice').addEventListener('click', () => sw('ui:testVoice', { voice: settings.voice, rate: settings.rate }));
 
-  for (const id of ['duck', 'subtitles', 'subtitlesEnglish', 'catchupPause', 'autoSpeedup']) {
+  for (const id of ['duck', 'subtitles', 'subtitlesEnglish', 'catchupPause', 'autoSpeedup', 'syncPlayback']) {
     $(id).addEventListener('change', (e) => update({ [id]: e.target.checked }));
   }
   for (const id of ['rate', 'originalVolume', 'frenchVolume']) {

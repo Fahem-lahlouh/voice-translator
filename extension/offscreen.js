@@ -14,6 +14,9 @@
 // du son de l'onglet et ne peut donc pas être re-capturée (pas de boucle).
 
 import * as store from './lib/store.js';
+import {
+  START_OFFSET_S, coveredBySync, dueToStart, insertSorted, maxDuration, prepKey, toPrepare,
+} from './lib/syncplayer.js';
 import { Timeline } from './lib/timeline.js';
 import { cleanTitle, videoIdentity } from './lib/videoid.js';
 
@@ -43,6 +46,8 @@ const state = {
   last: { en: '', fr: '' },
   // Bibliothèque : session en cours d'enregistrement.
   library: { enabled: true, title: '', saved: 0, duplicates: 0, progress: null, timeBase: '', error: '' },
+  // Lecture synchronisée des phrases déjà traduites.
+  sync: { enabled: true, known: 0, played: 0, missed: 0, suppressed: 0, avgError: null, maxError: null },
 };
 
 let settings = null; // réglages de l'extension (volumes, etc.)
@@ -75,6 +80,16 @@ let currentVideo = null; // { id, url, site, title, timeBase }
 let pendingSegments = []; // phrases arrivées avant les informations de la page
 let writeChain = Promise.resolve(); // écritures une à une (pas de doublon concurrent)
 let sessionWall0 = 0;
+
+// Lecture synchronisée : phrases connues de la vidéo, voix préparées, etc.
+let knownSegs = []; // triées par début, temps de la vidéo
+let preparedBuffers = new Map(); // clé de préparation -> AudioBuffer
+let requested = new Set(); // clés déjà demandées au serveur
+let startedIds = new Set(); // phrases lancées (ou abandonnées) depuis le dernier saut
+let syncSources = []; // voix synchronisées en cours
+let syncTimer = null;
+let syncErrors = []; // écart (s) entre le début de l'anglais et celui du français
+const syncLog = [];
 let queue = []; // [{ buffer, header }]
 let current = null; // { source, header, endsAt }
 let playTimer = null;
@@ -127,11 +142,12 @@ function computeStatus() {
   else if (state.error) s = 'erreur';
   else if (!state.server.connected) s = 'connexion';
   else if (!state.server.ready) s = 'chargement';
-  else if (current) s = 'lecture';
+  else if (current || syncSources.length) s = 'lecture';
   else if (serverBusy === 'transcription') s = 'transcription';
   else if (serverBusy === 'traduction' || serverBusy === 'voix' || serverTtsQueue > 0) s = 'traduction';
   else s = 'capture';
   state.status = s;
+  state.sync.speaking = syncSources.length > 0;
   m.queue = round1(queuedSeconds());
   m.clock = round1(samplesSent / 16000);
 }
@@ -208,7 +224,7 @@ function updateGains() {
   const t = playCtx.currentTime;
   let orig = settings.originalVolume;
   if (state.paused) orig = 1; // traduction en pause : on rend le son d'origine
-  else if (settings.duck && current) orig *= DUCK_FACTOR;
+  else if (settings.duck && (current || syncSources.length)) orig *= DUCK_FACTOR;
   origGain.gain.setTargetAtTime(orig, t, 0.08);
   frGain.gain.setTargetAtTime(settings.frenchVolume, t, 0.05);
 }
@@ -412,6 +428,10 @@ async function start({ streamId, tabId, settings: s, serverSettings: ss, port: p
   mediaDuration = null;
   currentVideo = null;
   pendingSegments = [];
+  state.sync = { enabled: settings.syncPlayback !== false, known: 0, played: 0, missed: 0, suppressed: 0,
+    avgError: null, maxError: null };
+  syncLog.length = 0;
+  syncErrors = [];
   state.library = { enabled: settings.saveSessions !== false, title: '', saved: 0, duplicates: 0,
     progress: null, timeBase: '', error: '' };
   lastSpeechAt = 0;
@@ -488,6 +508,12 @@ function resume() {
 
 async function stop(reason) {
   const tabId = state.tabId;
+  stopSync();
+  clearInterval(syncTimer);
+  syncTimer = null;
+  knownSegs = [];
+  preparedBuffers = new Map();
+  requested = new Set();
   if (state.media.autoPaused) releaseAutoPause();
   state.running = false;
   state.paused = false;
@@ -534,7 +560,16 @@ function onServerAudio(data) {
     playTest(pcm, header.sampleRate);
     return;
   }
+  if (header.prepared) {
+    onPreparedVoice(header, pcm);
+    return;
+  }
   if (!state.running || state.paused || header.epoch !== epoch || !playCtx) return; // périmé
+  // Passage déjà doublé par la lecture synchronisée : pas de double voix.
+  if (coveredBySync(timeline.toMedia(header.t0, header.t1), knownSegs, startedIds)) {
+    state.sync.suppressed += 1;
+    return;
+  }
   const buffer = playCtx.createBuffer(1, pcm.length, header.sampleRate);
   const ch = buffer.getChannelData(0);
   for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
@@ -586,6 +621,11 @@ function releaseAutoPause() {
 
 function playNext() {
   clearTimeout(playTimer);
+  if (syncSources.length && queue.length) {
+    // Une phrase synchronisée parle : la voix en direct attend son tour.
+    playTimer = setTimeout(playNext, 200);
+    return;
+  }
   if (!playCtx || !queue.length) {
     current = null;
     updateGains();
@@ -672,6 +712,7 @@ function onPageInfo() {
     currentVideo = { ...ident, title: cleanTitle(page.title) };
     state.library.saved = 0;
     state.library.duplicates = 0;
+    loadKnownSegments(currentVideo.id);
   } else {
     currentVideo.title = cleanTitle(page.title);
   }
@@ -729,7 +770,11 @@ function saveSegment(msg) {
   queueWrite(async () => {
     const res = await store.addSegment(videoId, seg);
     if (!currentVideo || currentVideo.id !== videoId) return;
-    if (res.status === 'enregistree') state.library.saved += 1;
+    if (res.status === 'enregistree') {
+      state.library.saved += 1;
+      knownSegs = insertSorted(knownSegs, res.segment);
+      state.sync.known = knownSegs.length;
+    }
     else state.library.duplicates += 1;
     const v = res.video;
     state.library.timeBase = v.timeBase;
@@ -737,6 +782,114 @@ function saveSegment(msg) {
     state.library.error = '';
     broadcast();
   });
+}
+
+// --------------------------------------------------- lecture synchronisée
+
+function syncOn() {
+  return state.running && !state.paused && settings && settings.syncPlayback !== false;
+}
+
+async function loadKnownSegments(videoId) {
+  knownSegs = [];
+  preparedBuffers = new Map();
+  requested = new Set();
+  startedIds = new Set();
+  try {
+    const segs = await store.getSegments(videoId);
+    if (currentVideo && currentVideo.id === videoId) {
+      knownSegs = segs.filter((x) => x.fr).sort((a, b) => a.start - b.start);
+      state.sync.known = knownSegs.length;
+    }
+  } catch (err) {
+    console.warn('[doublage] lecture synchronisée :', err);
+  }
+  if (!syncTimer) syncTimer = setInterval(syncTick, 80);
+}
+
+function syncTick() {
+  if (!syncOn() || !knownSegs.length || !timeline.hasMedia || !playCtx) return;
+  const last = timeline.media[timeline.media.length - 1];
+  if (last.paused) return;
+  const vr = last.rate || 1;
+  const mediaNow = timeline.wallToMedia(Date.now());
+  if (mediaNow === null) return;
+  // 1. Préparer les voix des prochaines phrases connues.
+  if (helloOk) {
+    for (const i of toPrepare(knownSegs, mediaNow, requested, vr)) {
+      const seg = knownSegs[i];
+      const key = prepKey(seg, vr);
+      requested.add(key);
+      send({ type: 'tts_fit', id: key, text: seg.fr, voice: settings.voice, rate: settings.rate,
+        maxDuration: Math.round(maxDuration(knownSegs, i, vr) * 100) / 100 });
+    }
+  }
+  // 2. Lancer celle dont le début arrive.
+  const due = dueToStart(knownSegs, mediaNow, startedIds, vr, START_OFFSET_S);
+  if (!due) return;
+  const seg = knownSegs[due.index];
+  const buf = preparedBuffers.get(prepKey(seg, vr));
+  if (buf) {
+    startedIds.add(seg.id);
+    startSync(seg, buf, due.delayS, mediaNow, vr);
+  } else if (due.delayS < -0.25) {
+    // Voix pas prête à temps : on laisse le direct prendre le relais.
+    startedIds.add(seg.id);
+    state.sync.missed += 1;
+    syncLog.push({ id: seg.id, start: seg.start, missed: true });
+  }
+}
+
+function startSync(seg, buffer, delayS, mediaNow, vr) {
+  const when = playCtx.currentTime + Math.max(0, delayS);
+  for (const old of syncSources) {
+    try { old.stop(when); } catch (_) { /* déjà arrêtée */ }
+  }
+  if (current || queue.length) clearPlayback(); // la voix en direct concerne un passage dépassé
+  const src = playCtx.createBufferSource();
+  src.buffer = buffer;
+  src.connect(frGain);
+  src.start(when);
+  syncSources.push(src);
+  src.onended = () => {
+    syncSources = syncSources.filter((x) => x !== src);
+    updateGains();
+    broadcast();
+  };
+  // Écart entre le début prévu de la phrase anglaise et celui de la voix.
+  const err = Math.round(((mediaNow + Math.max(0, delayS) * vr) - seg.start - START_OFFSET_S) * 1000) / 1000;
+  syncErrors.push(Math.abs(err));
+  if (syncErrors.length > 200) syncErrors.shift();
+  state.sync.played += 1;
+  state.sync.avgError = Math.round((syncErrors.reduce((a, b) => a + b, 0) / syncErrors.length) * 1000) / 1000;
+  state.sync.maxError = Math.max(...syncErrors);
+  syncLog.push({ id: seg.id, start: seg.start, err, delayS, duration: buffer.duration, fr: seg.fr });
+  if (syncLog.length > 300) syncLog.shift();
+  if (settings.subtitles) {
+    setTimeout(() => toSw('subtitle', {
+      tabId: state.tabId, fr: seg.fr, en: settings.subtitlesEnglish ? seg.en : '', duration: buffer.duration + 1,
+    }), Math.max(0, delayS) * 1000);
+  }
+  updateGains();
+  broadcast();
+}
+
+function stopSync() {
+  for (const src of syncSources) {
+    try { src.onended = null; src.stop(); } catch (_) { /* déjà arrêtée */ }
+  }
+  syncSources = [];
+  startedIds = new Set();
+  updateGains();
+}
+
+function onPreparedVoice(header, pcm) {
+  if (!state.running || !playCtx || !requested.has(header.segId)) return;
+  const buffer = playCtx.createBuffer(1, pcm.length, header.sampleRate);
+  const ch = buffer.getChannelData(0);
+  for (let i = 0; i < pcm.length; i++) ch[i] = pcm[i] / 32768;
+  preparedBuffers.set(header.segId, buffer);
+  if (preparedBuffers.size > 80) preparedBuffers.delete(preparedBuffers.keys().next().value);
 }
 
 // ---------------------------------------------------------- lecteur vidéo
@@ -776,7 +929,11 @@ function onMediaEvent(msg) {
       // concerne un autre passage, on le jette.
       clearTimeout(seekDebounce);
       seekDebounce = setTimeout(() => resetEpoch(msg.type), 150);
+      stopSync();
       if (state.media.autoPaused) state.media.autoPaused = false;
+      break;
+    case 'pause':
+      if (!msg.byExtension) stopSync(); // vidéo en pause : la voix synchronisée s'arrête aussi
       break;
     case 'ratechange':
       onRate(msg.rate);
@@ -859,9 +1016,22 @@ globalThis.__doublage = {
   timeline,
   get video() { return currentVideo; },
   flushWrites: () => writeChain,
+  syncLog,
   queuedSeconds,
   // Renvoie un flux contenant ce qui est envoyé aux haut-parleurs :
   // 'fr' = voix française seule, 'orig' = son de l'onglet seul, sinon les deux.
+  // Sortie en stéréo pour mesurer la synchronisation : gauche = son
+  // d'origine, droite = voix française.
+  tapStereo() {
+    if (!playCtx) return null;
+    const merger = playCtx.createChannelMerger(2);
+    origGain.connect(merger, 0, 0);
+    frGain.connect(merger, 0, 1);
+    const dest = playCtx.createMediaStreamDestination();
+    dest.channelCount = 2;
+    merger.connect(dest);
+    return dest.stream;
+  },
   tapOutput(which) {
     if (!playCtx) return null;
     const dest = playCtx.createMediaStreamDestination();

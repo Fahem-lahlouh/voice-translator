@@ -26,6 +26,7 @@ export const DEFAULTS = Object.freeze({
   pronunciationText: null, // null = aide seule (règles intégrées du serveur)
   contentMode: 'auto', // auto = détecté d'après le site
   saveSessions: true, // bibliothèque locale : phrases traduites enregistrées sur ce PC
+  syncPlayback: true, // phrases déjà traduites jouées pile au bon moment
 });
 
 const LIMITS = {

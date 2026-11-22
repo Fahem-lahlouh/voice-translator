@@ -239,6 +239,20 @@ class LocalServer:
                 if not isinstance(text, str) or len(text) > MAX_TEST_TEXT:
                     raise ProtocolError("texte de test invalide")
                 session.voice_test(voice, float(rate), text)
+            elif kind == "tts_fit":
+                seg_id, text = msg.get("id"), msg.get("text")
+                voice = msg.get("voice", self.cfg.default_voice)
+                rate, max_dur = msg.get("rate", 1.0), msg.get("maxDuration")
+                if not isinstance(seg_id, str) or not 0 < len(seg_id) <= 200:
+                    raise ProtocolError("identifiant de phrase invalide")
+                if not isinstance(text, str) or not 0 < len(text) <= 1000:
+                    raise ProtocolError("texte invalide")
+                if voice not in VOICES:
+                    raise ProtocolError("voix inconnue")
+                for v, lo, hi in ((rate, 0.5, 2.0), (max_dur, 0.2, 120.0)):
+                    if not isinstance(v, (int, float)) or isinstance(v, bool) or not lo <= v <= hi:
+                        raise ProtocolError("vitesse ou durée invalide")
+                session.prepare_voice(seg_id, text, voice, float(rate), float(max_dur))
             elif kind == "ping":
                 send_json({"type": "pong", "t": msg.get("t")})
             else:

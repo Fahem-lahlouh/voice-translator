@@ -607,6 +607,79 @@ TESTS.bibliotheque = async () => {
   }
 };
 
+// 13) Lecture synchronisée : phrases déjà traduites jouées pile au bon moment.
+TESTS.synchro = async () => {
+  const S = await session();
+  try {
+    const popup = await startDubbing(S, await S.popup());
+    // Son d'origine à plein volume et sans atténuation : sert de référence.
+    await S.sw.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, originalVolume: 1, duck: false } });
+    });
+    await instrument(S);
+    await waitReady(S);
+    // 1er passage en direct : la vidéo est traduite et enregistrée.
+    await S.page.evaluate(() => { const v = document.getElementById('v'); v.currentTime = 0; v.play(); });
+    await H.waitFor('premier passage enregistré jusqu\'à 40 s', async () => {
+      const st = await S.state();
+      const t = await S.page.evaluate(() => document.getElementById('v').currentTime);
+      return st && st.sync.known >= 9 && t >= 45 ? st : false;
+    }, { timeout: 120000 });
+
+    // 2e passage : retour au début, la lecture doit être synchronisée.
+    const off = await S.offscreen();
+    await off.evaluate(`
+      const s = __doublage.tapStereo();
+      const rec = new MediaRecorder(s, { mimeType: 'audio/webm;codecs=opus' });
+      globalThis.__chunks = []; rec.ondataavailable = (e) => { if (e.data.size) __chunks.push(e.data); };
+      rec.start(500); globalThis.__rec = rec; return true;`);
+    await S.page.evaluate(() => { document.getElementById('v').currentTime = 0; });
+    await H.sleep(30000);
+    const b64 = await off.evaluate(`
+      __rec.stop(); await new Promise((r) => setTimeout(r, 400));
+      const buf = new Uint8Array(await new Blob(__chunks).arrayBuffer());
+      let s = ''; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]); return btoa(s);`);
+    const st = await S.state();
+    const log = await off.evaluate('return __doublage.syncLog;');
+    off.close();
+    const webm = path.join(OUT, 'synchro.webm');
+    const wav = path.join(OUT, 'synchro.wav');
+    fs.writeFileSync(webm, Buffer.from(b64, 'base64'));
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', webm, '-ac', '2', '-ar', '16000', wav]);
+    const m = JSON.parse(execFileSync('python3', [path.join(H.HERE, 'mesure_synchro.py'), wav], { encoding: 'utf8' }));
+    fs.writeFileSync(path.join(OUT, 'synchro.json'), JSON.stringify({ mesure: m, journal: log }, null, 1));
+    const played = log.filter((x) => !x.missed);
+    H.record('second passage : phrases jouées par la lecture synchronisée', played.length >= 6,
+      `${played.length} phrase(s) calée(s), ${st.sync.missed} manquée(s)`);
+    H.record('écart mesuré dans l\'audio entre l\'anglais et le français', m.median_abs !== null && m.median_abs <= 0.3,
+      `médiane ${m.median_abs} s, maximum ${m.max_abs} s sur ${m.appariees} début(s) apparié(s), `
+      + `${m.non_appariees.length} non apparié(s) (avant : 1 à 5 s)`);
+    H.record('pas de double voix : le direct est coupé sur les passages calés', st.sync.suppressed > 0,
+      `${st.sync.suppressed} phrase(s) en direct écartée(s)`);
+
+    // Pause : la voix synchronisée s'arrête avec la vidéo.
+    await S.page.evaluate(() => { document.getElementById('v').currentTime = 0; });
+    await H.waitFor('une phrase calée en cours', async () => (await S.state()).sync.speaking, { timeout: 20000 });
+    await S.page.evaluate(() => document.getElementById('v').pause());
+    await H.sleep(500);
+    H.record('pause de la vidéo : la voix calée s\'arrête', !(await S.state()).sync.speaking);
+
+    // Vitesse × 1,25 : toujours calé.
+    const n0 = (await S.state()).sync.played;
+    await S.page.evaluate(() => { const v = document.getElementById('v'); v.playbackRate = 1.25; v.currentTime = 0; v.play(); });
+    await H.sleep(16000);
+    const off2 = await S.offscreen();
+    const log2 = (await off2.evaluate('return __doublage.syncLog;')).slice(-8).filter((x) => !x.missed);
+    off2.close();
+    const st2 = await S.state();
+    const errs = log2.map((x) => Math.abs(x.err));
+    H.record('vitesse × 1,25 : phrases toujours calées', st2.sync.played - n0 >= 3 && Math.max(...errs) <= 0.3,
+      `${st2.sync.played - n0} phrase(s), écart calculé max ${Math.max(...errs).toFixed(2)} s`);
+    popup.close();
+  } finally { await S.close(); }
+};
+
 // --------------------------------------------------------------------- run
 
 const names = Object.keys(TESTS).filter(want);

@@ -75,6 +75,19 @@ phrases anglaises et françaises horodatées. Jamais le son ni l'image.
 Options → **Bibliothèque** : désactiver l'enregistrement ou tout effacer.
 L'interface pour parcourir, chercher et exporter arrive à l'étape suivante.
 
+## Lecture synchronisée (façon film)
+
+Quand un passage a **déjà été traduit** (vous revenez en arrière, ou vous
+revoyez une leçon), la voix française n'est plus produite en direct : elle est
+préparée quelques secondes à l'avance et démarre **au moment même où
+l'anglais commence** (écart mesuré : 0,02 s en médiane). Sa vitesse est
+ajustée pour finir avant la phrase suivante (× 1,4 au plus). Pause, retour
+arrière et changement de vitesse restent calés sur la vidéo.
+
+Au premier visionnage, c'est le doublage en direct (quelques secondes de
+décalage) qui s'applique. Option dans la fenêtre de l'extension : « Lecture
+synchronisée ». Elle demande que la bibliothèque soit activée.
+
 ## Type de contenu
 
 Par défaut **automatique** : d'après le site (Udemy, Coursera… → formation ;

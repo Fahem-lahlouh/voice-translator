@@ -194,6 +194,27 @@ Scénario de bout en bout `bibliotheque` dans un vrai Chrome :
 | Progression | 57 % de la vidéo couverts |
 | Chrome fermé puis relancé | 1 vidéo, 12 phrases toujours présentes |
 
+## 3 quinquies. Lecture synchronisée (étape 2)
+
+Tests JavaScript : 10 sur la planification (préparation 6 s à l'avance,
+durée maximale, démarrage au bon moment, retard toléré, vitesse × 2,
+compensation, absence de double voix).
+
+Scénario `synchro` dans un vrai Chrome : premier passage en direct jusqu'à
+45 s, retour au début, enregistrement **stéréo de la sortie** (anglais à
+gauche, français à droite) et détection des débuts de phrase dans l'audio.
+
+| Vérification | Résultat |
+| --- | --- |
+| Phrases jouées par la lecture synchronisée | 11, aucune manquée |
+| Écart réel anglais → français (11 phrases) | **médiane 0,02 s, maximum 0,12 s** (en direct : 1 à 5 s) |
+| Double voix | aucune : 9 phrases en direct écartées |
+| Pause de la vidéo | la voix calée s'arrête |
+| Vitesse × 1,25 | 7 phrases calées, écart calculé ≤ 0,01 s |
+
+Avant compensation, le français partait 0,14 s trop tôt (marge de début de
+segment + latence de capture) : un décalage fixe de 0,15 s a été ajouté.
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |

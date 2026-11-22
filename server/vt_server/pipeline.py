@@ -171,7 +171,10 @@ class Session:
         self._cps_ema: dict = {}
         # Trois étages en parallèle : la reconnaissance du segment suivant
         # n'attend plus la traduction ni la voix du précédent.
+        # Voix préparées pour la lecture synchronisée (phrases déjà connues).
+        self._prep_q: deque = deque()
         self._threads = [
+            threading.Thread(target=self._prep_loop, name="vt-voix-calee", daemon=True),
             threading.Thread(target=self._text_loop, name="vt-texte", daemon=True),
             threading.Thread(target=self._mt_loop, name="vt-trad", daemon=True),
             threading.Thread(target=self._tts_loop, name="vt-voix", daemon=True),
@@ -229,6 +232,7 @@ class Session:
         self.active = False
         with self._cv:
             self._closed = True
+            self._prep_q.clear()
             self._seg_q.clear()
             self._mt_q.clear()
             self._tts_q.clear()
@@ -615,6 +619,55 @@ class Session:
         (out / f"{stem}.json").write_text(json.dumps(header, ensure_ascii=False), encoding="utf-8")
 
     # ------------------------------------------------------------ test de voix
+    # ------------------------------------------------- lecture synchronisée
+    def prepare_voice(self, seg_id: str, text: str, voice: str, rate: float, max_duration: float) -> None:
+        """Prépare la voix d'une phrase déjà traduite, à jouer à un moment
+        précis de la vidéo. Sa durée est ajustée pour tenir dans
+        `max_duration` secondes (accélération plafonnée à max_speedup)."""
+        with self._cv:
+            if any(item[0] == seg_id for item in self._prep_q):
+                return
+            self._prep_q.append((seg_id, text, voice, rate, max_duration))
+            while len(self._prep_q) > 24:  # demandes trop anciennes : abandonnées
+                self._prep_q.popleft()
+            self._cv.notify_all()
+
+    def _prep_loop(self) -> None:
+        while True:
+            with self._cv:
+                while not self._prep_q and not self._closed:
+                    self._cv.wait()
+                if self._closed:
+                    return
+                seg_id, text, voice, rate, max_dur = self._prep_q.popleft()
+            try:
+                speech, used = self._fit_speech(text, voice, rate, max_dur)
+                if speech is None:
+                    continue
+                header = {"type": "audio", "prepared": True, "segId": seg_id, "epoch": -1,
+                          "sampleRate": speech.sample_rate, "duration": round(speech.duration, 3),
+                          "text": text, "rate": round(used, 2), "maxDuration": round(max_dur, 2)}
+                self._send_binary(pack_audio(header, speech.pcm))
+            except Exception as exc:
+                log.exception("Voix préparée impossible")
+                self._send_json({"type": "error", "code": "tts",
+                                 "message": f"Voix préparée impossible : {exc}"})
+
+    def _fit_speech(self, text: str, voice: str, rate: float, max_dur: float):
+        sp = self.engines.speaker
+        cps = self._cps_ema.get(voice, 14.0)
+        cap = rate * self.cfg.max_speedup
+        predicted = len(text) / cps / rate
+        used = min(cap, rate * max(1.0, predicted / max_dur)) if max_dur > 0 else rate
+        speech = sp.synthesize(text, voice, used, self.settings.pronouncer)
+        if speech is None:
+            return None, used
+        self._learn_voice_speed(voice, text, speech.duration, used)
+        if speech.duration > max_dur * 1.08 and used < cap - 1e-3:
+            used = min(cap, used * speech.duration / max_dur)
+            speech = sp.synthesize(text, voice, used, self.settings.pronouncer) or speech
+        return speech, used
+
     def voice_test(self, voice: str, rate: float, text: str) -> None:
         def run():
             try:
