@@ -25,6 +25,7 @@ export const DEFAULTS = Object.freeze({
   glossaryText: null, // null = glossaire par défaut
   pronunciationText: null, // null = aide seule (règles intégrées du serveur)
   contentMode: 'auto', // auto = détecté d'après le site
+  saveSessions: true, // bibliothèque locale : phrases traduites enregistrées sur ce PC
 });
 
 const LIMITS = {

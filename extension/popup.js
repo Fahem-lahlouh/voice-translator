@@ -132,6 +132,20 @@ function render() {
   $('mediaInfo').textContent = mediaInfo;
   $('mediaInfo').hidden = !mediaInfo;
 
+  const lib = s.library;
+  let libText = '';
+  if (s.running && lib && lib.enabled) {
+    libText = lib.title ? `Bibliothèque : « ${lib.title} » — ${lib.saved} phrase(s) enregistrée(s)` : 'Bibliothèque : en attente de la vidéo…';
+    if (lib.progress !== null && lib.progress !== undefined) libText += `, ${Math.round(lib.progress * 100)} % de la vidéo`;
+    if (lib.duplicates) libText += ` (${lib.duplicates} passage(s) déjà connus, non dupliqués)`;
+    if (lib.timeBase === 'session') libText += ' — pas de lecteur vidéo : datation depuis le début de la session';
+    if (lib.error) libText = lib.error;
+  } else if (s.running && lib && !lib.enabled) {
+    libText = 'Bibliothèque désactivée : rien n\'est enregistré (voir les options).';
+  }
+  $('libInfo').textContent = libText;
+  $('libInfo').hidden = !libText;
+
   $('lastFr').textContent = s.last.fr || '';
   $('lastEn').textContent = s.last.en || '';
 

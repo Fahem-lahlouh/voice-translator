@@ -13,6 +13,10 @@
 // La voix française n'est jouée que par ce document : elle ne fait pas partie
 // du son de l'onglet et ne peut donc pas être re-capturée (pas de boucle).
 
+import * as store from './lib/store.js';
+import { Timeline } from './lib/timeline.js';
+import { cleanTitle, videoIdentity } from './lib/videoid.js';
+
 const PROTOCOL = 1;
 const RECONNECT_DELAYS = [500, 1000, 2000, 4000, 8000];
 const QUEUE_DROP_AT_S = 8; // sans pause automatique : au-delà, on saute des passages
@@ -37,6 +41,8 @@ const state = {
   media: { found: false, controllable: false, site: 'generique', autoPaused: false, rate: 1 },
   capture: { sampleRate: 0, outputRate: 0 },
   last: { en: '', fr: '' },
+  // Bibliothèque : session en cours d'enregistrement.
+  library: { enabled: true, title: '', saved: 0, duplicates: 0, progress: null, timeBase: '', error: '' },
 };
 
 let settings = null; // réglages de l'extension (volumes, etc.)
@@ -60,6 +66,15 @@ let workletNode = null;
 
 let epoch = 0;
 let samplesSent = 0; // horloge de capture de l'époque courante
+
+// Datation des phrases dans le temps de la vidéo, et enregistrement local.
+const timeline = new Timeline();
+let page = { url: '', title: '' }; // page de la vidéo (cadre principal)
+let mediaDuration = null;
+let currentVideo = null; // { id, url, site, title, timeBase }
+let pendingSegments = []; // phrases arrivées avant les informations de la page
+let writeChain = Promise.resolve(); // écritures une à une (pas de doublon concurrent)
+let sessionWall0 = 0;
 let queue = []; // [{ buffer, header }]
 let current = null; // { source, header, endsAt }
 let playTimer = null;
@@ -311,6 +326,7 @@ function onServerJson(msg) {
       if (msg.epoch !== epoch) break; // résultat d'une époque périmée
       if (msg.status === 'ok') {
         state.last = { en: msg.en || '', fr: msg.fr || '' };
+        saveSegment(msg);
       } else if (msg.status === 'abandonne') {
         state.warning = 'Le PC ne suit pas le rythme : des passages sont ignorés. '
           + 'Choisissez un profil plus léger côté serveur ou activez la pause automatique.';
@@ -390,6 +406,14 @@ async function start({ streamId, tabId, settings: s, serverSettings: ss, port: p
   state.media = { found: false, controllable: false, site: 'generique', autoPaused: false, rate: 1 };
   state.capture = { sampleRate: capCtx.sampleRate, outputRate: playCtx.sampleRate };
   startedAt = performance.now();
+  sessionWall0 = Date.now();
+  timeline.clear();
+  page = { url: '', title: '' };
+  mediaDuration = null;
+  currentVideo = null;
+  pendingSegments = [];
+  state.library = { enabled: settings.saveSessions !== false, title: '', saved: 0, duplicates: 0,
+    progress: null, timeBase: '', error: '' };
   lastSpeechAt = 0;
   epoch = (Date.now() & 0x3fffffff); // base unique par session, puis incrémentée
   ensureSocket();
@@ -405,6 +429,7 @@ async function start({ streamId, tabId, settings: s, serverSettings: ss, port: p
 function beginEpoch() {
   epoch += 1;
   samplesSent = 0;
+  timeline.resetCapture();
   clearPlayback();
   send({ type: 'start', epoch, settings: serverSettings });
 }
@@ -413,6 +438,7 @@ function resetEpoch(reason) {
   if (!state.running) return;
   epoch += 1;
   samplesSent = 0;
+  timeline.resetCapture();
   clearPlayback();
   state.metrics.lag = null;
   state.last = { en: '', fr: '' };
@@ -431,6 +457,7 @@ function onCaptureBlock({ pcm }) {
   frame.set(new Uint8Array(pcm), 4);
   ws.send(frame);
   samplesSent += pcm.byteLength / 2;
+  timeline.markCapture(samplesSent / 16000, Date.now());
 }
 
 function pause() {
@@ -632,6 +659,86 @@ function updateDiagnostics() {
   }
 }
 
+// ------------------------------------------------------------ bibliothèque
+
+function libraryOn() {
+  return state.running && settings && settings.saveSessions !== false;
+}
+
+function onPageInfo() {
+  if (!libraryOn() || !page.url) return;
+  const ident = videoIdentity(page.url);
+  if (!currentVideo || currentVideo.id !== ident.id) {
+    currentVideo = { ...ident, title: cleanTitle(page.title) };
+    state.library.saved = 0;
+    state.library.duplicates = 0;
+  } else {
+    currentVideo.title = cleanTitle(page.title);
+  }
+  state.library.title = currentVideo.title;
+  refreshVideo();
+  const waiting = pendingSegments;
+  pendingSegments = [];
+  for (const m of waiting) saveSegment(m);
+}
+
+function refreshVideo() {
+  if (!currentVideo) return;
+  const v = currentVideo;
+  queueWrite(() => store.upsertVideo({
+    id: v.id, url: v.url, site: v.site, title: v.title, duration: mediaDuration,
+    timeBase: timeline.hasMedia ? 'video' : 'session',
+    sourceLang: serverSettings ? serverSettings.source : 'en',
+    targetLang: serverSettings ? serverSettings.target : 'fr',
+  }));
+}
+
+function queueWrite(fn) {
+  writeChain = writeChain.then(fn).catch((err) => {
+    state.library.error = `Enregistrement local impossible : ${err.message || err}`;
+    console.warn('[doublage] bibliothèque :', err);
+  });
+  return writeChain;
+}
+
+// Enregistre une phrase traduite, datée dans le temps de la vidéo.
+function saveSegment(msg) {
+  if (!libraryOn() || !msg.fr) return;
+  if (!currentVideo) {
+    if (pendingSegments.length < 30) pendingSegments.push(msg);
+    return;
+  }
+  const range = timeline.toMedia(msg.t0, msg.t1);
+  let start;
+  let end;
+  if (range) {
+    start = range.start;
+    end = range.end;
+  } else if (!timeline.hasMedia) {
+    // Pas de lecteur contrôlable : datation depuis le début de la session.
+    const w0 = timeline.captureToWall(msg.t0);
+    const w1 = timeline.captureToWall(msg.t1);
+    if (w0 === null || w1 === null) return;
+    start = Math.round((w0 - sessionWall0) / 10) / 100;
+    end = Math.round((w1 - sessionWall0) / 10) / 100;
+  } else {
+    return; // phrase à cheval sur un saut dans la vidéo : non datable, ignorée
+  }
+  const videoId = currentVideo.id;
+  const seg = { start, end, en: msg.en, fr: msg.fr, conf: msg.conf };
+  queueWrite(async () => {
+    const res = await store.addSegment(videoId, seg);
+    if (!currentVideo || currentVideo.id !== videoId) return;
+    if (res.status === 'enregistree') state.library.saved += 1;
+    else state.library.duplicates += 1;
+    const v = res.video;
+    state.library.timeBase = v.timeBase;
+    state.library.progress = v.duration ? Math.min(1, store.coveredSeconds(v.covered) / v.duration) : null;
+    state.library.error = '';
+    broadcast();
+  });
+}
+
 // ---------------------------------------------------------- lecteur vidéo
 
 let seekDebounce = null;
@@ -639,6 +746,19 @@ let seekDebounce = null;
 function onMediaEvent(msg) {
   if (!state.running) return;
   switch (msg.type) {
+    case 'time':
+      timeline.markMedia({ time: msg.t, rate: msg.rate, paused: msg.paused, wall: msg.wall });
+      if (Number.isFinite(msg.duration) && msg.duration > 0 && msg.duration !== mediaDuration) {
+        mediaDuration = msg.duration;
+        if (currentVideo) refreshVideo();
+      }
+      return; // fréquent : pas de diffusion d'état
+    case 'pageinfo':
+      if (msg.top && typeof msg.url === 'string') {
+        page = { url: msg.url, title: String(msg.title || '') };
+        onPageInfo();
+      }
+      return;
     case 'hello':
       // Plusieurs cadres peuvent répondre : celui qui contient le lecteur l'emporte.
       if (msg.hasMedia) {
@@ -736,6 +856,9 @@ function playTest(pcm, sampleRate) {
 globalThis.__doublage = {
   snapshot,
   get epoch() { return epoch; },
+  timeline,
+  get video() { return currentVideo; },
+  flushWrites: () => writeChain,
   queuedSeconds,
   // Renvoie un flux contenant ce qui est envoyé aux haut-parleurs :
   // 'fr' = voix française seule, 'orig' = son de l'onglet seul, sinon les deux.

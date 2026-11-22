@@ -2,6 +2,7 @@
 
 import { parseGlossaryText } from './lib/glossary.js';
 import { parsePronunciationText, PRONUNCIATION_HELP } from './lib/pronunciation.js';
+import * as store from './lib/store.js';
 import {
   DEFAULTS, defaultGlossaryText, effectiveGlossaryText, effectivePronunciationText, loadSettings, saveSettings,
 } from './lib/settings.js';
@@ -30,6 +31,8 @@ async function load() {
   $('token').value = settings.token;
   $('glossary').value = await effectiveGlossaryText(settings);
   $('pronunciation').value = effectivePronunciationText(settings);
+  $('saveSessions').checked = settings.saveSessions;
+  await showLibStats();
   validatePron();
   $('savedInfo').textContent = settings.glossaryText === null
     ? 'Glossaire par défaut (TIBCO) en cours d\'utilisation.' : 'Glossaire personnalisé.';
@@ -66,6 +69,27 @@ function validatePron() {
   return errors;
 }
 
+async function showLibStats() {
+  try {
+    const st = await store.stats();
+    $('libStats').textContent = `${st.videos} vidéo(s), ${st.segments} phrase(s) enregistrée(s).`;
+  } catch (err) {
+    $('libStats').textContent = `Bibliothèque illisible : ${err.message || err}`;
+  }
+}
+
+$('saveSessions').addEventListener('change', async (e) => {
+  settings = await saveSettings({ saveSessions: e.target.checked });
+  note(e.target.checked ? 'Les prochaines phrases traduites seront enregistrées sur ce PC.'
+    : 'Enregistrement désactivé : plus rien ne sera conservé. La bibliothèque existante est gardée.');
+});
+$('clearLibrary').addEventListener('click', async () => {
+  if (!window.confirm('Effacer définitivement toutes les vidéos et phrases enregistrées ?')) return;
+  await store.clearAll();
+  await showLibStats();
+  note('Bibliothèque effacée.');
+});
+
 $('pronunciation').addEventListener('input', validatePron);
 $('savePron').addEventListener('click', async () => {
   if (validatePron().length) {
@@ -86,6 +110,7 @@ $('reset').addEventListener('click', async () => {
 });
 $('wipe').addEventListener('click', async () => {
   await chrome.storage.local.clear();
+  await store.clearAll();
   await load();
   note('Tous les réglages ont été effacés et remis à leurs valeurs par défaut.');
 });

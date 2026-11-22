@@ -19,11 +19,11 @@ const want = (name) => !only.length || only.includes(name);
 
 // ------------------------------------------------------------- utilitaires
 
-async function session({ serverOpts, startServerFirst = true } = {}) {
+async function session({ serverOpts, startServerFirst = true, profileDir } = {}) {
   const pageSrv = H.startPageServer();
   const server = startServerFirst ? H.startServer(serverOpts) : null;
   await H.sleep(800);
-  const { ctx, sw } = await H.launch();
+  const { ctx, sw, profileDir: usedProfile } = await H.launch({ profileDir });
   const page = await ctx.newPage();
   await page.goto(`http://127.0.0.1:${H.PORT}/page/`);
   await page.bringToFront();
@@ -36,7 +36,7 @@ async function session({ serverOpts, startServerFirst = true } = {}) {
       subtitles: true, catchupPause: false, voice: 'siwis', rate: 1 } });
   }, serverOpts?.port ?? H.SERVER_PORT);
   return {
-    ctx, sw, page, server, pageSrv,
+    ctx, sw, page, server, pageSrv, profileDir: usedProfile,
     async popup() {
       // Le raccourci referme une popup déjà ouverte : on part d'un état propre.
       for (let i = 0; i < 3; i++) {
@@ -522,6 +522,89 @@ TESTS.options = async () => {
     H.record('options : glossaire personnalisé conservé après rechargement', kept.includes('ressource partagée'));
     await opt.close();
   } finally { await S.close(); }
+};
+
+// 12) Bibliothèque : datation dans la vidéo, doublons, conservation.
+TESTS.bibliotheque = async () => {
+  // Débuts réels des phrases de l'extrait (mesurés hors navigateur).
+  const REF = { 'Give it a name': 16.9, 'Every time a request': 30.8, 'Next, we need': 38.0 };
+  const S = await session();
+  let profileDir = S.profileDir;
+  const readDb = async (off) => off.evaluate(`
+    const st = await import('./lib/store.js');
+    const vids = await st.listVideos();
+    const segs = vids.length ? await st.getSegments(vids[0].id) : [];
+    return { vids, segs };`);
+  try {
+    const popup = await startDubbing(S, await S.popup());
+    await instrument(S);
+    await waitReady(S);
+    await S.page.evaluate(() => { const v = document.getElementById('v'); v.currentTime = 0; v.play(); });
+    await H.waitFor('phrase « Give it a name » enregistrée', async () => {
+      const off = await H.attach('offscreen.html'); const db = await readDb(off); off.close();
+      return db.segs.some((x) => /give it a name/i.test(x.en));
+    }, { timeout: 90000 });
+
+    // Retour en arrière de 20 s : les passages déjà traduits ne doivent pas être dupliqués.
+    await S.page.evaluate(() => document.getElementById('back').click());
+    await H.sleep(14000);
+    // Puis vitesse × 1,25 jusqu'à la phrase de 38 s.
+    await S.page.evaluate(() => { document.getElementById('fast').click(); });
+    await H.waitFor('phrase « Next, we need » enregistrée', async () => {
+      const off = await H.attach('offscreen.html'); const db = await readDb(off); off.close();
+      return db.segs.some((x) => /next, we need/i.test(x.en));
+    }, { timeout: 90000 });
+    await H.sleep(1500);
+
+    const off = await H.attach('offscreen.html');
+    const st = await off.evaluate('return __doublage.snapshot();');
+    const db = await readDb(off);
+    off.close();
+    const v = db.vids[0];
+    H.record('bibliothèque : fiche de la vidéo créée', db.vids.length === 1 && /Page de test/.test(v.title),
+      `« ${v && v.title} », identifiant ${v && v.id}, durée ${v && v.duration && v.duration.toFixed(1)} s`);
+    H.record('bibliothèque : phrases datées dans le temps de la vidéo', v && v.timeBase === 'video',
+      `${db.segs.length} phrase(s) enregistrée(s)`);
+    for (const [txt, ref] of Object.entries(REF)) {
+      const seg = db.segs.find((x) => x.en.toLowerCase().includes(txt.toLowerCase()));
+      const ecart = seg ? Math.abs(seg.start - ref) : Infinity;
+      H.record(`datation « ${txt}… » (${txt === 'Next, we need' ? 'lue à × 1,25' : 'lue à × 1'})`, ecart <= 1.0,
+        seg ? `début ${seg.start.toFixed(2)} s, attendu ≈ ${ref} s (écart ${ecart.toFixed(2)} s)` : 'phrase absente');
+    }
+    let overlaps = 0;
+    const sorted = [...db.segs].sort((a, b) => a.start - b.start);
+    for (let i = 1; i < sorted.length; i++) {
+      const o = Math.min(sorted[i - 1].end, sorted[i].end) - sorted[i].start;
+      if (o > 0.5 * (sorted[i].end - sorted[i].start)) overlaps++;
+    }
+    H.record('retour en arrière : aucun doublon enregistré', overlaps === 0 && st.library.duplicates > 0,
+      `${st.library.duplicates} passage(s) réentendu(s) reconnu(s) comme déjà traduit(s), ${overlaps} chevauchement(s)`);
+    H.record('progression calculée', v && v.covered.length > 0 && v.duration > 70,
+      `${Math.round(st.library.progress * 100)} % de la vidéo couverts`);
+    popup.close();
+  } finally {
+    await S.ctx.close().catch(() => {});
+    if (S.server) await S.server.stop();
+    S.pageSrv.stop();
+  }
+
+  // Navigateur fermé puis relancé avec le même profil : tout doit être là.
+  const { ctx, sw } = await H.launch({ profileDir });
+  try {
+    const extId = new URL(sw.url()).host;
+    const opt = await ctx.newPage();
+    await opt.goto(`chrome-extension://${extId}/options.html`);
+    await H.sleep(800);
+    const stats = await opt.textContent('#libStats');
+    const n = await opt.evaluate(async () => {
+      const st = await import('./lib/store.js');
+      const vids = await st.listVideos();
+      return vids.length ? (await st.getSegments(vids[0].id)).length : 0;
+    });
+    H.record('conservation après fermeture du navigateur', n > 5 && /1 vidéo/.test(stats), `${stats.trim()}`);
+  } finally {
+    await ctx.close().catch(() => {});
+  }
 };
 
 // --------------------------------------------------------------------- run

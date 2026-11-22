@@ -176,6 +176,24 @@ year » → « Au SAP l'an dernier »). Les petits modèles de langage locaux
 testés (Qwen 2.5 1,5B et 3B) ne faisaient pas mieux, et un modèle 7B ne
 tient pas dans la mémoire d'un PC courant.
 
+## 3 quater. Bibliothèque : datation et conservation (étape 1)
+
+Tests JavaScript (`node --test test/js/*.test.mjs`) : 13 réussis (conversion
+du temps en lecture normale, × 1,5, pause, retour arrière, phrase à cheval
+sur un saut ; identité YouTube / Udemy / générique ; fusion des intervalles ;
+détection des doublons).
+
+Scénario de bout en bout `bibliotheque` dans un vrai Chrome :
+
+| Vérification | Résultat |
+| --- | --- |
+| « Give it a name » (lecture × 1) | datée à 16,89 s, réel 16,9 s |
+| « Every time a request » (× 1) | 30,75 s, réel 30,8 s |
+| « Next, we need » (lue à × 1,25) | 37,99 s, réel 38,0 s |
+| Retour en arrière de 20 s | 5 passages reconnus comme déjà traduits, 0 doublon |
+| Progression | 57 % de la vidéo couverts |
+| Chrome fermé puis relancé | 1 vidéo, 12 phrases toujours présentes |
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |
@@ -194,7 +212,7 @@ tient pas dans la mémoire d'un PC courant.
 | **Fonctionnement sur Udemy** | **À vérifier par vous** ([udemy.md](udemy.md)). Pas de compte disponible ici. |
 | **Windows et les scripts `.bat`** | **À vérifier.** Écrits avec soin (fins de ligne CRLF, encodage, chemins), jamais exécutés sur Windows. Toutes les dépendances publient des roues Windows 64 bits pour Python 3.11 à 3.14 (vérifié sur PyPI). |
 | Performances sur un portable grand public | **Supposées** 2 à 4 fois plus lentes que les mesures ci-dessus. Utilisez `mesurer-pc.bat`. |
-| Sessions longues (une heure) | **Non testées.** Le plus long essai dure ≈ 2 min. Les files sont bornées et rien n'est conservé, mais ce n'est pas une mesure. |
+| Sessions longues (une heure) | **Non testées.** Le plus long essai dure ≈ 2 min. Les files sont bornées ; la bibliothèque grossit d'environ une phrase toutes les 3 s, mais ce n'est pas une mesure. |
 | Voix d'un vrai formateur, accent, bruit | **Non testé** sur un vrai cours technique. Testé sur deux voix humaines non techniques. |
 | GPU | **Non testé.** |
 | Plein écran sur un vrai lecteur | **Non testé** (code écrit, non exercé). |

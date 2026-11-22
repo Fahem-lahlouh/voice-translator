@@ -49,8 +49,10 @@ export function startPageServer() {
 
 // ----------------------------------------------------------------- Chrome
 
-export async function launch() {
-  const profile = fs.mkdtempSync(path.join(os.tmpdir(), 'vt-chrome-'));
+export async function launch({ profileDir } = {}) {
+  // Un profil existant peut être réutilisé : c'est ce qui permet de vérifier
+  // que la bibliothèque survit à la fermeture du navigateur.
+  const profile = profileDir || fs.mkdtempSync(path.join(os.tmpdir(), 'vt-chrome-'));
   const ctx = await chromium.launchPersistentContext(profile, {
     channel: 'chromium', headless: false,
     args: [`--disable-extensions-except=${EXT}`, `--load-extension=${EXT}`,

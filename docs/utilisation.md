@@ -60,6 +60,21 @@ Des messages apparaissent aussi quand des passages ont été ignorés (PC trop
 lent), sautés (voix trop en retard) ou jugés trop incertains pour être
 traduits.
 
+## Bibliothèque (enregistrement des sessions)
+
+Activée par défaut. Pendant le doublage, chaque phrase traduite est
+enregistrée **sur ce PC, dans le navigateur**, au fil de la lecture, avec son
+moment exact dans la vidéo (anglais + français). Fermer Chrome ne fait perdre
+que la phrase en cours. Revenir en arrière sur un passage déjà traduit ne crée
+pas de doublon. La vidéo est reconnue par son adresse, débarrassée des
+paramètres temporaires (« ?t=42s », etc.).
+
+Ce qui est enregistré : titre et adresse de la page, durée de la vidéo,
+phrases anglaises et françaises horodatées. Jamais le son ni l'image.
+
+Options → **Bibliothèque** : désactiver l'enregistrement ou tout effacer.
+L'interface pour parcourir, chercher et exporter arrive à l'étape suivante.
+
 ## Type de contenu
 
 Par défaut **automatique** : d'après le site (Udemy, Coursera… → formation ;
@@ -132,4 +147,5 @@ Modifiable dans `chrome://extensions/shortcuts`.
 1. **Arrêter** dans la fenêtre de l'extension (libère la capture).
 2. Fermez la fenêtre du serveur, ou `Ctrl+C` dedans.
 
-Rien ne reste en mémoire : aucun son ni aucune transcription n'est conservé.
+Aucun son n'est conservé. Les phrases traduites restent dans la **bibliothèque
+locale** (sur ce PC uniquement), sauf si vous l'avez désactivée dans les options.

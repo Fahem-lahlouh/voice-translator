@@ -79,19 +79,30 @@
     <button type="button" id="savePron" class="primary">Enregistrer la prononciation</button>
   </div>
 
+  <h2>Bibliothèque</h2>
+  <label class="check"><input type="checkbox" id="saveSessions"> Enregistrer mes sessions
+  (titre et adresse de la vidéo, phrases anglaises et françaises horodatées)</label>
+  <p class="hint">Enregistrement sur ce PC uniquement, dans le navigateur, au fil de la
+  lecture. Aucun son et aucune vidéo ne sont enregistrés.</p>
+  <p id="libStats" class="hint"></p>
+  <div class="actions">
+    <button type="button" id="clearLibrary">Effacer toute la bibliothèque</button>
+  </div>
+
   <h2>Confidentialité</h2>
   <ul class="compact">
     <li>Le son capté est envoyé au seul serveur local (<code>127.0.0.1</code>) et n'est jamais
     enregistré sur disque, sauf si vous activez volontairement l'option de débogage du serveur.</li>
-    <li>Les transcriptions et traductions ne sont pas conservées : seule la dernière phrase
-    reste affichée dans la fenêtre de l'extension.</li>
+    <li>Si la bibliothèque est activée (réglage par défaut), le texte des phrases traduites et
+    le titre de la vidéo sont conservés <strong>sur ce PC uniquement</strong>. Désactivez-la
+    ou effacez-la ci-dessus à tout moment.</li>
     <li>L'extension ne lit ni les cookies, ni les identifiants, ni les jetons de session du
     site visité, et ne demande jamais l'accès au microphone.</li>
-    <li>Seuls vos réglages (volumes, voix, glossaire) sont conservés, dans le stockage local
-    de l'extension.</li>
+    <li>Vos réglages (volumes, voix, glossaire, prononciation) sont conservés dans le stockage
+    local de l'extension.</li>
   </ul>
   <div class="actions">
-    <button type="button" id="wipe">Effacer tous les réglages enregistrés</button>
+    <button type="button" id="wipe">Effacer tous les réglages et la bibliothèque</button>
   </div>
 
   <script type="module" src="options.js"></script>

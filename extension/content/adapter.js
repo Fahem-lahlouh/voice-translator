@@ -49,7 +49,27 @@
     return all.sort((a, b) => score(b) - score(a))[0];
   }
 
-  const EVENTS = ['play', 'pause', 'seeking', 'seeked', 'ratechange', 'emptied', 'timeupdate', 'ended'];
+  const EVENTS = ['play', 'pause', 'seeking', 'seeked', 'ratechange', 'emptied', 'timeupdate', 'ended',
+    'loadedmetadata', 'durationchange'];
+  let lastMarkAt = 0;
+
+  // Repère de temps : position de la vidéo à une heure murale donnée. Sert à
+  // dater chaque phrase traduite dans le temps de la vidéo.
+  function mark() {
+    if (!media) return;
+    lastMarkAt = performance.now();
+    send('time', {
+      t: media.currentTime, rate: media.playbackRate, paused: media.paused || media.seeking,
+      wall: Date.now(), duration: Number.isFinite(media.duration) ? media.duration : null,
+    });
+  }
+
+  // Informations de la page (la page principale seulement) : adresse et titre,
+  // pour retrouver la vidéo dans la bibliothèque. Rien d'autre n'est lu.
+  function pageInfo() {
+    if (!isTop) return;
+    send('pageinfo', { url: location.href, title: document.title });
+  }
 
   function bind(el) {
     if (media === el) return;
@@ -67,6 +87,8 @@
 
   function announce() {
     send('hello', { hasMedia: !!media, rate: media ? media.playbackRate : 1, paused: media ? media.paused : true });
+    pageInfo();
+    mark();
   }
 
   function onMedia(ev) {
@@ -83,7 +105,8 @@
         }
         lastTime = el.currentTime;
         lastTimeAt = now;
-        break;
+        if (now - lastMarkAt > 1000) mark();
+        return;
       }
       case 'seeked':
         lastTime = el.currentTime;
@@ -107,6 +130,7 @@
       default:
         break;
     }
+    mark();
   }
 
   // ---------------------------------------- changement de leçon (adresse)
@@ -122,7 +146,11 @@
     const key = lessonKey();
     if (key !== lastLessonKey) {
       lastLessonKey = key;
-      if (isTop) send('lessonchange', { key: isUdemy ? key : '' });
+      if (isTop) {
+        send('lessonchange', { key: isUdemy ? key : '' });
+        pageInfo();
+        setTimeout(pageInfo, 1500); // le titre de la page est souvent mis à jour après l'adresse
+      }
     }
   }
 

@@ -14,8 +14,9 @@ lire de sous-titres.
   Les modèles sont téléchargés une fois (≈ 360 Mo pour le profil par défaut)
   puis exécutés sur votre PC.
 * **Rien ne sort de votre machine.** Le son va uniquement au serveur local
-  (`127.0.0.1`). L'extension ne lit ni cookies, ni identifiants, ni jetons de
-  session, et ne demande jamais le microphone.
+  (`127.0.0.1`). Les phrases traduites sont gardées dans une bibliothèque
+  locale (désactivable). L'extension ne lit ni cookies, ni identifiants, ni
+  jetons de session, et ne demande jamais le microphone.
 
 > Ce projet est une réalisation personnelle. Il ne reprend ni le code, ni la
 > marque, ni l'interface d'un produit existant.
