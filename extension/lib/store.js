@@ -5,7 +5,7 @@
 // navigateur ne fait perdre que la phrase en cours.
 
 export const DB_NAME = 'doublage-bibliotheque';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 // ------------------------------------------------- fonctions pures (testées)
 
@@ -75,6 +75,10 @@ function migrate(db, oldVersion) {
     videos.createIndex('byLastSeen', 'lastSeenAt');
     const segs = db.createObjectStore('segments', { keyPath: 'id' });
     segs.createIndex('byVideo', ['videoId', 'start']);
+  }
+  if (oldVersion < 2) {
+    // Version 2 : résumés (un par vidéo). Les données de la version 1 sont gardées.
+    db.createObjectStore('summaries', { keyPath: 'videoId' });
   }
 }
 
@@ -220,10 +224,23 @@ export async function updateSegment(id, patch) {
   await done(t);
 }
 
+export async function saveSummary(videoId, data) {
+  const db = await openDb();
+  const t = tx(db, ['summaries'], 'readwrite');
+  t.objectStore('summaries').put({ ...data, videoId, createdAt: Date.now() });
+  await done(t);
+}
+
+export async function getSummary(videoId) {
+  const db = await openDb();
+  return req2p(tx(db, ['summaries']).objectStore('summaries').get(videoId));
+}
+
 export async function deleteVideo(id) {
   const db = await openDb();
-  const t = tx(db, ['videos', 'segments'], 'readwrite');
+  const t = tx(db, ['videos', 'segments', 'summaries'], 'readwrite');
   t.objectStore('videos').delete(id);
+  t.objectStore('summaries').delete(id);
   const idx = t.objectStore('segments').index('byVideo');
   const keys = await req2p(idx.getAllKeys(IDBKeyRange.bound([id, -Infinity], [id, Infinity])));
   for (const k of keys) t.objectStore('segments').delete(k);
@@ -232,9 +249,10 @@ export async function deleteVideo(id) {
 
 export async function clearAll() {
   const db = await openDb();
-  const t = tx(db, ['videos', 'segments'], 'readwrite');
+  const t = tx(db, ['videos', 'segments', 'summaries'], 'readwrite');
   t.objectStore('videos').clear();
   t.objectStore('segments').clear();
+  t.objectStore('summaries').clear();
   await done(t);
 }
 

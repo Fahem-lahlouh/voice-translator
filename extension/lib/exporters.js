@@ -121,3 +121,39 @@ export function matches(seg, query) {
   if (!q) return true;
   return normalize(`${seg.en} ${seg.fr} ${seg.note || ''}`).includes(q);
 }
+
+// Résumé (express et, s'il existe, rédigé par l'IA locale) en Markdown.
+export function summaryToMarkdown(video, express, ai) {
+  const out = [`# Résumé — ${mdEscape(video.title || 'Vidéo')}`, ''];
+  if (ai) {
+    out.push(`## Résumé rédigé par l'IA locale (${ai.model})`, '',
+      '_Rédigé par un petit modèle local : peut contenir des erreurs. Vérifiez avec la transcription._', '');
+    if (ai.court) out.push(mdEscape(ai.court), '');
+    if (ai.points && ai.points.length) {
+      out.push('### Points essentiels', '');
+      for (const p of ai.points) out.push(`- ${mdEscape(p.texte || p)}${p.aVerifier ? ' _(à vérifier)_' : ''}`);
+      out.push('');
+    }
+    if (ai.chapitres && ai.chapitres.length > 1) {
+      out.push('### Chapitres', '');
+      for (const c of ai.chapitres) {
+        out.push(`#### ${formatTime(c.start)} — ${mdEscape(c.title)}`, '', mdEscape(c.summary), '');
+        for (const p of c.points || []) out.push(`- ${mdEscape(p)}`);
+        out.push('');
+      }
+    }
+    if (ai.fiche) {
+      out.push('### Fiche de révision', '');
+      for (const d of ai.fiche.definitions || []) out.push(`- **${mdEscape(d.terme)}** : ${mdEscape(d.definition)}`);
+      out.push('');
+      for (const q of ai.fiche.questions || []) out.push(`- **${mdEscape(q.question)}**`, `  ${mdEscape(q.reponse)}`);
+      out.push('');
+    }
+  }
+  if (express) {
+    out.push('## Résumé express (extraits réels de la vidéo)', '');
+    for (const s of express.court) out.push(`- [${formatTime(s.start)}] ${mdEscape(s.fr)}`);
+    out.push('', `**Termes clés** : ${express.termes.map(mdEscape).join(', ')}`, '');
+  }
+  return `${out.join('\n')}\n`;
+}

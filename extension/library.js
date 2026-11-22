@@ -2,9 +2,13 @@
 // corrections, notes, exports. Tout est lu et écrit dans la base locale.
 
 import {
-  fileName, formatDuration, formatTime, matches, normalize, toClipboard, toJson, toMarkdown, toSrt, toTxt,
+  fileName, formatDuration, formatTime, matches, normalize, summaryToMarkdown, toClipboard, toJson, toMarkdown,
+  toSrt, toTxt,
 } from './lib/exporters.js';
+import { detectContentMode } from './lib/settings.js';
 import * as store from './lib/store.js';
+import { extractiveSummary, supportFor } from './lib/summary.js';
+import { connectTool } from './lib/toolclient.js';
 
 const $ = (id) => document.getElementById(id);
 const LANGS = { en: 'Anglais', fr: 'Français' };
@@ -172,6 +176,7 @@ async function globalSearch() {
 
 async function openVideo(id) {
   show('viewVideo');
+  showTab('transcript');
   current = await store.getVideo(id);
   if (!current) { note('Cette vidéo n\'existe plus dans la bibliothèque.', 'error'); location.hash = ''; return; }
   selected.clear();
@@ -302,7 +307,182 @@ function exportAs(fmt) {
   }
 }
 
+// ---------------------------------------------------------------- résumés
+
+let tool = null; // connexion « outil » au serveur local
+let express = null;
+let aiSummary = null;
+
+function showTab(which) {
+  const sum = which === 'summary';
+  $('summaryPanel').hidden = !sum;
+  $('transcriptTools').hidden = sum;
+  $('transcriptPanel').hidden = sum;
+  $('tabTranscript').setAttribute('aria-pressed', String(!sum));
+  $('tabSummary').setAttribute('aria-pressed', String(sum));
+  if (sum) openSummary();
+}
+
+function timeButton(t) {
+  return el('button', { type: 'button', class: 'time', title: 'Aller à ce moment de la vidéo',
+    onclick: () => seek(current, t) }, formatTime(t));
+}
+
+async function openSummary() {
+  express = extractiveSummary(segments, { duration: current.duration });
+  renderExpress();
+  const mode = detectContentMode(current.url);
+  $('sumMode').value = mode;
+  $('sumSheet').checked = mode === 'formation';
+  aiSummary = (await store.getSummary(current.id)) || null;
+  renderAi();
+  await refreshModels();
+}
+
+function renderExpress() {
+  const box = $('express');
+  box.textContent = '';
+  if (!express) { box.append(el('p', { class: 'hint', text: 'Pas encore de phrases traduites pour cette vidéo.' })); return; }
+  box.append(el('h4', { text: 'En bref' }), ...express.court.map((s) => el('p', { class: 'extrait' }, timeButton(s.start), ' ', s.fr)));
+  box.append(el('h4', { text: 'Termes clés' }), el('ul', { class: 'chips' }, ...express.termes.map((t) => el('li', { text: t }))));
+  box.append(el('h4', { text: 'Passages importants' }),
+    el('ul', {}, ...express.points.map((s) => el('li', { class: 'extrait' }, timeButton(s.start), ' ', s.fr))));
+  if (express.chapitres.length > 1) {
+    box.append(el('h4', { text: 'Par chapitre' }), ...express.chapitres.map((c) => el('div', { class: 'chapitre' },
+      el('p', {}, timeButton(c.start), ` → ${formatTime(c.end)} · `, el('strong', { text: c.terms.join(', ') })),
+      ...c.extraits.map((s) => el('p', { class: 'extrait hint', text: s.fr })))));
+  }
+}
+
+async function getTool() {
+  if (tool) return tool;
+  tool = await connectTool();
+  return tool;
+}
+
+async function refreshModels() {
+  const sel = $('sumModel');
+  try {
+    const t = await getTool();
+    const r = await t.request({ type: 'llm_status' });
+    sel.textContent = '';
+    for (const m of r.llm) {
+      const size = `${(m.size / 1e9).toFixed(1).replace('.', ',')} Go`;
+      sel.append(el('option', { value: m.id, text: `${m.default ? 'Standard' : 'Léger'} — ${m.label}${m.installed ? '' : ` (à télécharger : ${size})`}` }));
+    }
+    sel.dataset.models = JSON.stringify(r.llm);
+    if (!aiSummary) $('sumInfo').textContent = '';
+  } catch (err) {
+    tool = null;
+    sel.textContent = '';
+    sel.dataset.models = '[]';
+    $('sumInfo').textContent = `Le résumé par IA demande le serveur local : ${err.message}. `
+      + 'Lancez scripts\\demarrer-serveur.bat. (Le résumé express ci-dessus fonctionne sans lui.)';
+  }
+}
+
+async function generate() {
+  // Serveur démarré après l'ouverture de l'onglet : on se reconnecte.
+  if (!JSON.parse($('sumModel').dataset.models || '[]').length) await refreshModels();
+  const models = JSON.parse($('sumModel').dataset.models || '[]');
+  const m = models.find((x) => x.id === $('sumModel').value);
+  if (!m) return;
+  const t = await getTool();
+  const box = $('sumProgressBox');
+  const bar = $('sumProgress');
+  const step = $('sumStep');
+  $('sumGo').disabled = true;
+  $('sumCancel').hidden = false;
+  box.hidden = false;
+  try {
+    if (!m.installed) {
+      const size = `${(m.size / 1e9).toFixed(1).replace('.', ',')} Go`;
+      if (!window.confirm(`Le modèle « ${m.label} » doit être téléchargé une fois (${size}) depuis huggingface.co.\n`
+        + `Licence : ${m.license}.\nContinuer ?`)) return;
+      await t.request({ type: 'llm_download', model: m.id }, (ev) => {
+        if (ev.type === 'llm_download') {
+          bar.value = ev.done / ev.total;
+          step.textContent = `Téléchargement : ${Math.round((100 * ev.done) / ev.total)} %`;
+        }
+      });
+      await refreshModels();
+    }
+    const t0 = Date.now();
+    const res = await t.request({
+      type: 'summarize', model: m.id, mode: $('sumMode').value, withSheet: $('sumSheet').checked,
+      segments: segments.map((s) => ({ start: s.start, end: s.end, en: s.en })),
+    }, (ev) => {
+      if (ev.type === 'summary_progress') {
+        bar.value = ev.progress;
+        const el2 = Math.round((Date.now() - t0) / 1000);
+        step.textContent = `${ev.step} — ${el2} s écoulées`;
+      }
+    });
+    if (res.type === 'summary_cancelled') { $('sumInfo').textContent = 'Résumé annulé.'; return; }
+    const r = res.result;
+    // Chaque point est relié au passage qui l'appuie, ou signalé « à vérifier ».
+    r.points = r.points.map((p) => {
+      const sup = supportFor(p, segments);
+      return { texte: p, aVerifier: sup.doubtful, start: sup.segment ? sup.segment.start : null, absents: sup.absents };
+    });
+    await store.saveSummary(current.id, r);
+    aiSummary = await store.getSummary(current.id);
+    renderAi();
+  } catch (err) {
+    $('sumInfo').textContent = `Résumé impossible : ${err.message}`;
+    tool = null;
+  } finally {
+    $('sumGo').disabled = false;
+    $('sumCancel').hidden = true;
+    box.hidden = true;
+  }
+}
+
+function renderAi() {
+  const box = $('ai');
+  box.textContent = '';
+  if (!aiSummary) return;
+  const a = aiSummary;
+  $('sumInfo').textContent = `Généré le ${new Date(a.createdAt).toLocaleString('fr-FR')} avec ${a.model}, `
+    + `en ${String(a.dureeCalcul).replace('.', ',')} s.`;
+  box.append(el('p', { class: 'avert', text: 'Rédigé par un petit modèle d\'IA local : il peut contenir des erreurs. '
+    + 'Chaque point est relié au passage le plus proche ; « à vérifier » signale un appui faible ou un nom '
+    + 'introuvable dans la vidéo (c\'est un indice, pas une preuve).' }));
+  if (a.court) box.append(el('h4', { text: 'Résumé' }), el('p', { text: a.court }));
+  if (a.points && a.points.length) {
+    box.append(el('h4', { text: a.mode === 'film' ? 'Événements importants' : a.mode === 'formation'
+      ? 'Concepts et points à retenir' : 'Points essentiels' }),
+    el('ul', {}, ...a.points.map((p) => el('li', { class: 'point' }, p.texte,
+      p.aVerifier ? el('span', { class: 'verif doute', text: `à vérifier${(p.absents || []).length ? ` : ${p.absents.join(', ')} introuvable(s)` : ''}` })
+        : el('span', { class: 'verif ok', text: 'appuyé' }),
+      p.start !== null ? [' ', timeButton(p.start)] : null))));
+  }
+  if (a.chapitres && a.chapitres.length > 1) {
+    box.append(el('h4', { text: 'Résumé par chapitre' }), ...a.chapitres.map((c) => el('div', { class: 'chapitre' },
+      el('p', {}, timeButton(c.start), ` → ${formatTime(c.end)} · `, el('strong', { text: c.title })),
+      el('p', { text: c.summary }),
+      c.points && c.points.length ? el('ul', {}, ...c.points.map((p) => el('li', { text: p }))) : null)));
+  }
+  if (a.fiche) {
+    box.append(el('h4', { text: 'Fiche de révision' }));
+    if (a.fiche.definitions.length) {
+      box.append(el('dl', {}, ...a.fiche.definitions.flatMap((d) => [el('dt', { text: d.terme }), el('dd', { text: d.definition })])));
+    }
+    box.append(...a.fiche.questions.map((q) => el('details', { class: 'carte' },
+      el('summary', { text: q.question }), el('p', { text: q.reponse || '(pas de réponse proposée)' }))));
+  }
+}
+
 // ------------------------------------------------------------- événements
+
+$('tabTranscript').addEventListener('click', () => showTab('transcript'));
+$('tabSummary').addEventListener('click', () => showTab('summary'));
+$('sumGo').addEventListener('click', generate);
+$('sumCancel').addEventListener('click', () => tool && tool.cancel());
+$('sumExport').addEventListener('click', () => {
+  if (!current) return;
+  download(fileName(current.title, 'resume.md'), summaryToMarkdown(current, express, aiSummary), 'text/markdown');
+});
 
 $('tabVideos').addEventListener('click', () => { location.hash = ''; });
 $('tabSearch').addEventListener('click', () => { location.hash = '#recherche'; });

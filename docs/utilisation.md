@@ -82,6 +82,42 @@ elle s'y positionne directement ; sinon elle est ouverte dans un nouvel
 onglet, au bon moment sur YouTube, au début sur les autres sites (Udemy ne
 permet pas d'ouvrir une leçon à une position précise : l'heure est rappelée).
 
+## Résumés (onglet « Résumé » d'une vidéo)
+
+Deux résumés, tous deux **gratuits et calculés sur ce PC** :
+
+* **Résumé express**, instantané, sans le serveur : il ne rédige rien, il
+  **choisit des phrases réelles** de la vidéo (les plus représentatives), les
+  termes clés et, pour une vidéo longue, un découpage par chapitre. Chaque
+  extrait a son heure : cliquez pour y aller. Il ne peut pas inventer.
+* **Résumé rédigé par l'IA locale** (bouton « Générer le résumé », serveur
+  local démarré) : résumé court, points essentiels (concepts pour une
+  formation, événements pour un film), résumé par chapitre pour les vidéos
+  longues et, en option, une **fiche de révision** (définitions et questions
+  sous forme de cartes à retourner). Le type de contenu est deviné
+  d'après le site ; vous pouvez le changer.
+
+Le modèle d'IA (≈ 3,2 Go, ou ≈ 1,7 Go pour le modèle léger) est téléchargé
+**une fois**, après confirmation, la première fois que vous lancez un résumé.
+Comptez **quelques minutes** de calcul pour 10 minutes de vidéo sur un
+portable (voir [tests.md](tests.md)) ; le doublage en cours n'est pas
+interrompu, mais il peut ralentir pendant ce temps. « Annuler » arrête le
+calcul.
+
+**Fiabilité.** Un petit modèle local peut se tromper, mélanger des
+personnages ou inventer un détail. Pour vous aider à repérer ces erreurs,
+chaque point est relié au passage de la vidéo qui lui ressemble le plus :
+
+* « appuyé » : un passage proche existe (cliquez sur l'heure pour vérifier) ;
+* « à vérifier » : appui faible, ou un nom cité par le résumé est introuvable
+  dans la vidéo.
+
+C'est un **indice, pas une preuve** : un point « appuyé » peut contenir une
+erreur, un point « à vérifier » peut être juste. Le résumé ne décrit jamais
+ce qui se voit à l'image : il ne connaît que ce qui est dit.
+
+Le résumé est enregistré avec la vidéo et peut être exporté en Markdown.
+
 ## Bibliothèque (enregistrement des sessions)
 
 Activée par défaut. Pendant le doublage, chaque phrase traduite est

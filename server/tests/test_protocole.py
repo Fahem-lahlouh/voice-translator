@@ -89,7 +89,7 @@ class TestMessages(unittest.TestCase):
 
     def test_message_trop_long_refuse(self):
         with self.assertRaises(ProtocolError):
-            LocalServer._parse_json('{"type":"x","p":"' + "a" * 600_000 + '"}')
+            LocalServer._parse_json('{"type":"x","p":"' + "a" * 5_000_000 + '"}')
 
     def test_message_binaire_refuse_comme_texte(self):
         with self.assertRaises(ProtocolError):
@@ -104,6 +104,43 @@ class TestMessages(unittest.TestCase):
             with self.subTest(taille=len(mauvais)):
                 with self.assertRaises(ProtocolError):
                     LocalServer._on_audio(FauxSession(), mauvais)
+
+    def test_transcription_pour_resume_validee(self):
+        ok = LocalServer._valid_segments([{"start": 5, "end": 7, "en": " Hello. "}, {"start": 1, "end": 2, "en": "Hi"}])
+        self.assertEqual([s["en"] for s in ok], ["Hi", "Hello."])  # triées, nettoyées
+        for mauvais in ([], "texte", [{"start": "a", "end": 1, "en": "x"}], [{"start": 1, "end": 2, "en": 3}],
+                        [{"start": 1, "end": 2, "en": "   "}]):
+            with self.subTest(mauvais=mauvais):
+                with self.assertRaises(ProtocolError):
+                    LocalServer._valid_segments(mauvais)
+
+    def test_outil_repond_avec_identifiant_de_requete(self):
+        import asyncio
+        import json
+
+        class FauxResume:
+            def status(self):
+                return [{"id": "llama3.2-3b"}]
+
+        class FauxWs:
+            def __init__(self, msgs):
+                self.msgs = msgs
+
+            def __aiter__(self):
+                return self._gen()
+
+            async def _gen(self):
+                for m in self.msgs:
+                    yield m
+
+        srv = LocalServer.__new__(LocalServer)
+        srv.summarizer = FauxResume()
+        recus = []
+        asyncio.run(srv._tool_loop(FauxWs([json.dumps({"type": "llm_status", "requestId": "r1"})]), recus.append))
+        self.assertEqual(recus[0]["type"], "hello_ok")
+        self.assertEqual((recus[1]["type"], recus[1]["requestId"]), ("llm_status", "r1"))
+        with self.assertRaises(ProtocolError):
+            asyncio.run(srv._tool_loop(FauxWs([json.dumps({"type": "llm_status", "requestId": 5})]), recus.append))
 
     def test_trame_audio_valide(self):
         class FauxSession:

@@ -256,6 +256,44 @@ repartait du début** (les retours arrière des scénarios précédents
 revenaient en fait à 0). Nouveau serveur `test/serveur_test.py` ; avec lui,
 la suite complète donne 77/77.
 
+## 3 octies. Résumés (étape 5)
+
+Tests serveur : découpage en tranches équilibrées, lecture tolérante des
+réponses du modèle (titres variés, gras, « Point 1 : »), validation stricte
+de la transcription envoyée, réponses de la connexion « outil » portant
+l'identifiant de la requête. Tests JavaScript : 5 sur le résumé express et
+le contrôle d'appui (noms accentués compris).
+
+Scénario `resume` : 7/7 — base créée au format v1 puis **migrée en v2 sans
+perte** (95/95 phrases), résumé express (7 extraits, tous des phrases
+réelles, en ≈ 0,1 s), message clair sans serveur, liste des modèles,
+résumé IA en français avec 6 points (3 « appuyés », 3 « à vérifier »),
+résumé retrouvé après rechargement, export Markdown.
+
+Durée mesurée, transcription de 10 min (*The Canterville Ghost*, 95 phrases),
+Llama 3.2 3B, machine de test :
+
+| Fils de calcul | Chargement du modèle | Calcul du résumé |
+| --- | --- | --- |
+| 3 (réglage automatique sur 4 cœurs) | 9,3 s | 155 s |
+| 4 | 5,7 s | 124 s |
+
+Pic mémoire mesuré auparavant : ≈ 6,5 Go. Sur un portable grand public,
+comptez probablement **5 à 10 minutes** pour 10 min de vidéo (estimation,
+non mesurée).
+
+Qualité constatée (lecture humaine du résultat) : résumé fidèle dans
+l'ensemble, mais le modèle **reprend les erreurs de transcription** — le
+nom « Canterville », mal reconnu une fois en « Cantoville », devient une
+deuxième maison dans le résumé. Le contrôle d'appui ne détecte pas ce
+genre d'erreur (le mot fautif existe bien dans la transcription).
+
+Suite complète de bout en bout après cette étape : **84/84** vérifications
+réussies (tous les scénarios, y compris ceux des étapes précédentes).
+
+Bug trouvé par ce scénario et corrigé : la réponse « état des modèles » ne
+portait pas l'identifiant de requête, la page attendait indéfiniment.
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |

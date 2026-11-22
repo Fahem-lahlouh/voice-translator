@@ -315,3 +315,26 @@ automatique est indisponible.
 > reproduit le même comportement (changement de source + changement
 > d'adresse). La procédure pour le valider sur votre compte est dans
 > [udemy.md](udemy.md).
+
+## 9. Résumés
+
+* **Résumé express** (dans l'extension, `lib/summary.js`) : résumé
+  *extractif* — notation des phrases par fréquence des mots porteurs de sens
+  (méthode de Luhn), sur des phrases reconstituées à partir des segments.
+  Instantané, sans serveur, et incapable d'inventer : il ne montre que des
+  phrases réellement prononcées.
+* **Résumé rédigé** (serveur, `vt_server/summarizer.py`) : petit modèle de
+  langage local exécuté par CTranslate2 (déjà utilisé pour la traduction :
+  aucune dépendance nouvelle). Les longues transcriptions sont découpées en
+  tranches équilibrées d'≈ 1 300 mots, résumées une à une (résumés par
+  chapitre), puis fusionnées. Le modèle reçoit **le texte anglais** (qu'il
+  comprend mieux que notre traduction automatique) et répond en français.
+* La bibliothèque parle au serveur par une connexion distincte (rôle
+  « outil ») qui **ne remplace pas** la session de doublage en cours, avec les
+  mêmes contrôles (origine, jeton, taille et forme des messages).
+* Contrôle d'appui : chaque point du résumé est rapproché du segment le plus
+  proche (mots communs) et les noms propres absents de la vidéo sont
+  signalés. C'est une heuristique, présentée comme telle à l'utilisateur.
+* Stockage : base IndexedDB passée en version 2 (magasin `summaries`), avec
+  une migration qui conserve les données de la version 1 (vérifiée par un
+  test de bout en bout).

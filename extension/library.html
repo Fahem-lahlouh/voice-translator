@@ -63,7 +63,42 @@
     <p id="vMeta" class="hint"></p>
     <div class="progress-line"><progress id="vProgress" max="1" value="0"></progress><span id="vProgressText" class="hint"></span></div>
 
-    <div class="toolbar noprint">
+    <nav class="tabs subtabs noprint" aria-label="Contenu de la vidéo">
+      <button type="button" id="tabTranscript" aria-pressed="true">Transcription</button>
+      <button type="button" id="tabSummary" aria-pressed="false">Résumé</button>
+    </nav>
+
+    <section id="summaryPanel" hidden>
+      <h3>Résumé express <span class="hint">— extraits réels de la vidéo, instantané</span></h3>
+      <div id="express"></div>
+
+      <h3>Résumé rédigé par l'IA locale <span class="hint">— gratuit, sur ce PC</span></h3>
+      <div class="toolbar noprint">
+        <label>Type de contenu
+          <select id="sumMode">
+            <option value="auto">Général</option>
+            <option value="formation">Formation ou cours</option>
+            <option value="documentaire">Documentaire</option>
+            <option value="film">Film, série ou récit</option>
+            <option value="conversation">Conversation, interview</option>
+          </select>
+        </label>
+        <label>Modèle
+          <select id="sumModel"></select>
+        </label>
+        <label class="check"><input type="checkbox" id="sumSheet"> Fiche de révision (définitions et questions)</label>
+        <button type="button" id="sumGo" class="primary">Générer le résumé</button>
+        <button type="button" id="sumCancel" hidden>Annuler</button>
+      </div>
+      <div id="sumProgressBox" class="noprint" hidden>
+        <progress id="sumProgress" max="1" value="0"></progress> <span id="sumStep" class="hint"></span>
+      </div>
+      <p id="sumInfo" class="hint"></p>
+      <div id="ai"></div>
+      <div class="actions noprint"><button type="button" id="sumExport">Exporter le résumé (Markdown)</button></div>
+    </section>
+
+    <div class="toolbar noprint" id="transcriptTools">
       <label class="grow">Chercher dans la transcription
         <input type="search" id="tq" autocomplete="off">
       </label>
@@ -82,8 +117,10 @@
       <button type="button" id="openVideo">Ouvrir la vidéo</button>
       <button type="button" id="deleteVideo" class="danger">Supprimer</button>
     </div>
-    <p id="tcount" class="hint noprint"></p>
-    <ol id="segments" class="segments" aria-label="Transcription bilingue"></ol>
+    <div id="transcriptPanel">
+      <p id="tcount" class="hint noprint"></p>
+      <ol id="segments" class="segments" aria-label="Transcription bilingue"></ol>
+    </div>
   </main>
 
   <script type="module" src="library.js"></script>

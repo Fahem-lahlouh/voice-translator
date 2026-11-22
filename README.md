@@ -18,6 +18,11 @@ lire de sous-titres.
   locale (désactivable). L'extension ne lit ni cookies, ni identifiants, ni
   jetons de session, et ne demande jamais le microphone.
 
+* **Bibliothèque et résumés.** Chaque vidéo doublée garde sa transcription
+  bilingue horodatée (recherche, corrections, exports TXT/Markdown/PDF/SRT/
+  JSON) et peut être résumée sur votre PC : résumé express instantané et
+  résumé rédigé par une IA locale (téléchargement optionnel ≈ 3,2 Go).
+
 > Ce projet est une réalisation personnelle. Il ne reprend ni le code, ni la
 > marque, ni l'interface d'un produit existant.
 

@@ -887,6 +887,121 @@ TESTS.bibliothequeui = async () => {
   } finally { await ctx.close(); }
 };
 
+TESTS.resume = async () => {
+  const server = H.startServer();
+  const { ctx, sw } = await H.launch();
+  try {
+    const extId = new URL(sw.url()).host;
+    await sw.evaluate(async (p) => { await chrome.storage.local.set({ settings: { serverPort: p } }); }, H.SERVER_PORT);
+    const page = await ctx.newPage();
+    // Base au format de la version 1 (avant les résumés), créée à la main.
+    await page.goto(`chrome-extension://${extId}/manifest.json`);
+    const segs = JSON.parse(fs.readFileSync(path.join(H.ROOT, 'test/js/donnees/canterville_10min.json'), 'utf8'));
+    await page.evaluate(async (segs) => {
+      await new Promise((resolve, reject) => {
+        const r = indexedDB.open('doublage-bibliotheque', 1);
+        r.onupgradeneeded = () => {
+          const db = r.result;
+          db.createObjectStore('videos', { keyPath: 'id' }).createIndex('byLastSeen', 'lastSeenAt');
+          db.createObjectStore('segments', { keyPath: 'id' }).createIndex('byVideo', ['videoId', 'start']);
+        };
+        r.onsuccess = () => {
+          const db = r.result;
+          const t = db.transaction(['videos', 'segments'], 'readwrite');
+          const now = Date.now();
+          t.objectStore('videos').put({ id: 'youtube:cant', title: 'The Canterville Ghost — chapitre 1',
+            url: 'https://www.youtube.com/watch?v=cant', site: 'youtube', duration: 600, sourceLang: 'en',
+            targetLang: 'fr', timeBase: 'video', createdAt: now, lastSeenAt: now, covered: [[0, 600]],
+            segmentCount: segs.length, lastPosition: 600 });
+          for (const s of segs) {
+            t.objectStore('segments').put({ id: `youtube:cant#${Math.round(s.start * 10)}`, videoId: 'youtube:cant',
+              ...s, transcriptStatus: 'stable', translationStatus: 'provisoire', note: '', createdAt: now, updatedAt: now });
+          }
+          t.oncomplete = () => { db.close(); resolve(); };
+          t.onerror = () => reject(t.error);
+        };
+        r.onerror = () => reject(r.error);
+      });
+    }, segs);
+
+    await page.goto(`chrome-extension://${extId}/library.html#video=${encodeURIComponent('youtube:cant')}`);
+    await page.waitForSelector('#segments li');
+    const n = await page.locator('#segments li').count();
+    const migrated = await page.evaluate(async () => {
+      const st = await import('./lib/store.js');
+      const db = await st.openDb();
+      return { version: db.version, stores: [...db.objectStoreNames] };
+    });
+    H.record('base v1 migrée en v2 sans perte (phrases gardées, résumés ajoutés)',
+      n === segs.length && migrated.version === 2 && migrated.stores.includes('summaries'),
+      `${n}/${segs.length} phrases, version ${migrated.version}, magasins ${migrated.stores.join(', ')}`);
+
+    // Résumé express : instantané, sans serveur, uniquement des extraits réels.
+    const t0 = Date.now();
+    await page.click('#tabSummary');
+    await page.waitForSelector('#express p.extrait');
+    const exprMs = Date.now() - t0;
+    const express = await page.evaluate(() => ({
+      phrases: [...document.querySelectorAll('#express p.extrait')].map((p) => p.textContent.replace(/^\d\d:\d\d:\d\d /, '')),
+      termes: [...document.querySelectorAll('#express .chips li')].map((li) => li.textContent),
+      transcriptHidden: document.getElementById('transcriptPanel').hidden,
+    }));
+    const frs = new Set(segs.map((s) => s.fr));
+    const allReal = express.phrases.length > 0 && express.phrases.every((p) => [...frs].some((f) => p.includes(f.slice(0, 40))));
+    H.record('résumé express : extraits réels de la vidéo, termes clés', allReal && express.termes.length >= 3 && express.transcriptHidden,
+      `${express.phrases.length} extraits, termes : ${express.termes.slice(0, 6).join(', ')} ; ${exprMs} ms`);
+
+    // Résumé par l'IA locale (modèle standard). Si le serveur n'était pas
+    // encore prêt, le bouton se reconnecte.
+    const info0 = await page.locator('#sumInfo').textContent();
+    H.record('sans serveur : message clair, résumé express toujours disponible',
+      (await page.locator('#sumModel option').count()) > 0 || /demarrer-serveur/.test(info0), info0.slice(0, 90));
+    for (let i = 0; i < 90 && !server.lines.some((l) => /Écoute : ws:/.test(l)); i++) await H.sleep(1000);
+    await page.click('#tabTranscript');
+    await page.click('#tabSummary');
+    await page.waitForFunction(() => document.querySelectorAll('#sumModel option').length > 0, null, { timeout: 30000 })
+      .catch(async (e) => {
+        throw new Error(`${e.message} ; info : ${await page.locator('#sumInfo').textContent()} ; serveur : ${server.lines.slice(-5).join(' / ')}`);
+      });
+    const opts = await page.locator('#sumModel option').allTextContents();
+    H.record('liste des modèles de résumé fournie par le serveur local', opts.length === 2, opts.join(' | '));
+    const g0 = Date.now();
+    await page.click('#sumGo');
+    await page.waitForSelector('#sumProgressBox:not([hidden])');
+    let sawProgress = false;
+    while (!(await page.locator('#ai p.avert').count())) {
+      if (Date.now() - g0 > 600000) throw new Error('résumé trop long (> 10 min)');
+      if ((await page.locator('#sumStep').textContent()).includes('s écoulées')) sawProgress = true;
+      const info = await page.locator('#sumInfo').textContent();
+      if (/impossible/.test(info)) throw new Error(info);
+      await H.sleep(1000);
+    }
+    const genS = (Date.now() - g0) / 1000;
+    const ai = await page.evaluate(() => ({
+      text: document.getElementById('ai').innerText,
+      points: document.querySelectorAll('#ai li.point').length,
+      ok: document.querySelectorAll('#ai .verif.ok').length,
+      doute: document.querySelectorAll('#ai .verif.doute').length,
+    }));
+    const french = /\b(le|la|les|des|est|une)\b/i.test(ai.text);
+    H.record('résumé IA rédigé en français, points reliés à la vidéo', french && ai.points >= 3 && sawProgress,
+      `${genS.toFixed(0)} s, ${ai.points} points (${ai.ok} appuyés, ${ai.doute} à vérifier)`);
+
+    // Persistance : rouvrir la page affiche le résumé enregistré.
+    await page.reload();
+    await page.waitForSelector('#segments li');
+    await page.click('#tabSummary');
+    await page.waitForSelector('#ai p.avert', { timeout: 10000 });
+    H.record('résumé enregistré dans la bibliothèque et retrouvé à la réouverture',
+      (await page.locator('#ai li.point').count()) === ai.points);
+
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#sumExport')]);
+    const md = fs.readFileSync(await dl.path(), 'utf8');
+    H.record('export du résumé en Markdown', /^# Résumé — /.test(md) && /IA locale/.test(md) && /Résumé express/.test(md),
+      dl.suggestedFilename());
+  } finally { await ctx.close(); await server.stop(); }
+};
+
 // --------------------------------------------------------------------- run
 
 const names = Object.keys(TESTS).filter(want);

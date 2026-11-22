@@ -83,3 +83,17 @@ Par ordre d'utilité estimée :
     pour alterner deux voix françaises.
 11. **Un paquet d'installation unique** (`.exe`) embarquant Python, pour
     supprimer l'étape « installer Python ».
+
+## Résumés
+
+* Le résumé par IA est rédigé par un **petit modèle local** : il peut
+  mélanger des personnages, inventer un détail ou reprendre une erreur de
+  reconnaissance (un nom mal entendu peut devenir un nouveau personnage ou
+  un nouveau lieu). Le marquage « appuyé / à vérifier » aide à repérer
+  certaines erreurs, pas toutes.
+* Il ne connaît que **ce qui est dit** : rien de ce qui se voit à l'image.
+* Il ne couvre que les passages déjà doublés (la partie de la vidéo
+  enregistrée dans la bibliothèque).
+* Calcul lent sur un portable (plusieurs minutes pour 10 min de vidéo) et
+  mémoire importante (≈ 6,5 Go pour le modèle standard) : le doublage peut
+  ralentir s'il tourne en même temps.

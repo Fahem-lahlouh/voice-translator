@@ -20,6 +20,7 @@ import http
 import json
 import logging
 import struct
+import time
 from typing import Optional
 
 from websockets.asyncio.server import ServerConnection, serve
@@ -28,11 +29,12 @@ from websockets.exceptions import ConnectionClosed
 from . import PROTOCOL_VERSION, __version__
 from .config import Config
 from .engines import VOICES, Engines
-from .pipeline import SUPPORTED_PAIRS, Session, parse_settings
+from .pipeline import CONTENT_MODES, SUPPORTED_PAIRS, Session, parse_settings
+from .summarizer import LLM_MODELS, Cancelled, Summarizer
 
 log = logging.getLogger("vt.server")
 
-MAX_MESSAGE_BYTES = 512 * 1024
+MAX_MESSAGE_BYTES = 4 * 1024 * 1024  # une transcription de plusieurs heures tient dans un message
 MAX_AUDIO_SAMPLES = 16000 * 2  # 2 s par trame au maximum
 MAX_TEST_TEXT = 300
 CLOSE_POLICY = 1008
@@ -59,6 +61,8 @@ class LocalServer:
         self.cfg = cfg
         self.engines = engines
         self._active: Optional[ServerConnection] = None
+        # Résumés : modèle de langage chargé seulement à la demande.
+        self.summarizer = Summarizer(cfg.models_dir, threads=max(1, cfg.cpu_threads))
         self._allowed_origins = cfg.allowed_origins()
         self._allowed_hosts = {
             f"127.0.0.1:{cfg.port}", f"localhost:{cfg.port}", f"[::1]:{cfg.port}",
@@ -139,6 +143,16 @@ class LocalServer:
                     await ws.close(CLOSE_POLICY, "jeton incorrect")
                     return
 
+            role = hello.get("role", "doublage")
+            if role == "outil":
+                # Connexion d'un outil (bibliothèque) : ne remplace pas la
+                # session de doublage en cours.
+                await self._tool_loop(ws, send_json)
+                return
+            if role != "doublage":
+                await ws.close(CLOSE_POLICY, "rôle inconnu")
+                return
+
             # 2) Une seule session : la nouvelle remplace l'ancienne.
             previous, self._active = self._active, ws
             if previous is not None:
@@ -183,6 +197,106 @@ class LocalServer:
             if self._active is ws:
                 self._active = None
             sender_task.cancel()
+
+    # ------------------------------------------------------------- outils
+    async def _tool_loop(self, ws: ServerConnection, send_json) -> None:
+        loop = asyncio.get_running_loop()
+        send_json({"type": "hello_ok", "role": "outil", "version": __version__, "llm": self.summarizer.status()})
+        busy = False
+        async for message in ws:
+            if not isinstance(message, str):
+                raise ProtocolError("message texte attendu")
+            msg = self._parse_json(message)
+            kind = msg["type"]
+            req_id = msg.get("requestId", "")
+            if not isinstance(req_id, str) or len(req_id) > 100:
+                raise ProtocolError("identifiant de requête invalide")
+            if kind == "llm_status":
+                send_json({"type": "llm_status", "requestId": req_id, "llm": self.summarizer.status()})
+            elif kind == "cancel":
+                self.summarizer.cancel()
+            elif kind in ("llm_download", "summarize"):
+                if busy:
+                    send_json({"type": "error", "requestId": req_id, "message": "Une opération est déjà en cours."})
+                    continue
+                model = msg.get("model", "llama3.2-3b")
+                if model not in LLM_MODELS:
+                    raise ProtocolError("modèle de résumé inconnu")
+                if kind == "llm_download":
+                    job = self._download_job(model, req_id, send_json)
+                else:
+                    job = self._summary_job(msg, model, req_id, send_json)
+                busy = True
+
+                async def run(job=job):
+                    nonlocal busy
+                    try:
+                        await loop.run_in_executor(None, job)
+                    finally:
+                        busy = False
+
+                asyncio.ensure_future(run())
+            else:
+                raise ProtocolError(f"type de message inconnu : {kind[:40]}")
+
+    def _download_job(self, model: str, req_id: str, send_json):
+        def job():
+            last = [0.0]
+
+            def progress(done, total):
+                now = time.monotonic()
+                if now - last[0] > 0.5 or done == total:
+                    last[0] = now
+                    send_json({"type": "llm_download", "requestId": req_id, "model": model,
+                               "done": done, "total": total})
+            try:
+                self.summarizer.download(model, progress)
+                send_json({"type": "llm_status", "requestId": req_id, "llm": self.summarizer.status()})
+            except Exception as exc:
+                log.exception("Téléchargement du modèle de résumé impossible")
+                send_json({"type": "error", "requestId": req_id, "message": f"Téléchargement impossible : {exc}"})
+        return job
+
+    @staticmethod
+    def _valid_segments(raw) -> list:
+        if not isinstance(raw, list) or not raw or len(raw) > 30000:
+            raise ProtocolError("transcription invalide")
+        out = []
+        for s in raw:
+            if not isinstance(s, dict):
+                raise ProtocolError("phrase invalide")
+            start, end, en = s.get("start"), s.get("end"), s.get("en")
+            if not all(isinstance(v, (int, float)) and not isinstance(v, bool) for v in (start, end)):
+                raise ProtocolError("horodatage invalide")
+            if not isinstance(en, str) or len(en) > 4000:
+                raise ProtocolError("texte de phrase invalide")
+            if en.strip():
+                out.append({"start": float(start), "end": float(end), "en": en.strip()})
+        if not out:
+            raise ProtocolError("transcription vide")
+        return sorted(out, key=lambda x: x["start"])
+
+    def _summary_job(self, msg: dict, model: str, req_id: str, send_json):
+        segments = self._valid_segments(msg.get("segments"))
+        mode = msg.get("mode", "auto")
+        if mode not in CONTENT_MODES:
+            raise ProtocolError("type de contenu inconnu")
+        with_sheet = msg.get("withSheet", False)
+        if not isinstance(with_sheet, bool):
+            raise ProtocolError("withSheet : booléen attendu")
+
+        def job():
+            def progress(frac, step):
+                send_json({"type": "summary_progress", "requestId": req_id, "progress": round(frac, 3), "step": step})
+            try:
+                result = self.summarizer.summarize(segments, mode, model, with_sheet, progress)
+                send_json({"type": "summary_result", "requestId": req_id, "result": result})
+            except Cancelled:
+                send_json({"type": "summary_cancelled", "requestId": req_id})
+            except Exception as exc:
+                log.exception("Résumé impossible")
+                send_json({"type": "error", "requestId": req_id, "message": f"Résumé impossible : {exc}"})
+        return job
 
     # --------------------------------------------------------------- messages
     @staticmethod

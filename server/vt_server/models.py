@@ -162,6 +162,47 @@ _add(ModelSpec(
 ))
 
 
+# Modèles de langage pour les résumés (facultatifs, téléchargés à la demande).
+_add(ModelSpec(
+    key="llm:llama3.2-3b",
+    kind="llm",
+    label="Llama 3.2 3B Instruct (résumés, standard)",
+    repo="jncraton/Llama-3.2-3B-Instruct-ct2-int8",
+    revision="5da4ba8ba6252bbb33476404e9b8450ffc8e762d",
+    files=(
+        ModelFile("config.json", 241),
+        ModelFile("generation_config.json", 189),
+        ModelFile("model.bin", 3216566523, "9125c9540ee5bc6507be7182c24edadf73f560ff2803cfee977342846996cb8e"),
+        ModelFile("special_tokens_map.json", 296),
+        ModelFile("tokenizer.json", 9085657),
+        ModelFile("tokenizer_config.json", 54528),
+        ModelFile("vocabulary.json", 2783517),
+    ),
+    license="Llama 3.2 Community License (usage personnel et professionnel autorisé ; « Built with Llama »)",
+    source_note="https://huggingface.co/meta-llama/Llama-3.2-3B-Instruct",
+    local_dir="llm/llama3.2-3b",
+))
+_add(ModelSpec(
+    key="llm:qwen3-1.7b",
+    kind="llm",
+    label="Qwen3 1.7B (résumés, léger, moins fiable)",
+    repo="jncraton/Qwen3-1.7B-ct2-int8",
+    revision="4d92852b8d2733fe891aabec779e1d9c8a2f419c",
+    files=(
+        ModelFile("config.json", 147),
+        ModelFile("generation_config.json", 239),
+        ModelFile("model.bin", 1723631567, "d29d3e99d421082bd6b699394b39b654918000b69f499fdcb1c1492255e38bbd"),
+        ModelFile("tokenizer.json", 11422654, "aeb13307a71acd8fe81861d94ad54ab689df773318809eed3cbe794b4492dae4"),
+        ModelFile("tokenizer_config.json", 9732),
+        ModelFile("vocab.json", 2776833),
+        ModelFile("vocabulary.json", 3861154),
+    ),
+    license="Apache-2.0",
+    source_note="https://huggingface.co/Qwen/Qwen3-1.7B",
+    local_dir="llm/qwen3-1.7b",
+))
+
+
 ProgressCb = Callable[[str, int, int], None]  # (clé, octets reçus, octets attendus)
 
 

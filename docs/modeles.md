@@ -69,6 +69,31 @@ proposées ici :
 > local. Pour un usage personnel, cela n'impose rien. Pour redistribuer un
 > produit basé sur ce dépôt, il faut en tenir compte.
 
+## Résumés (optionnel, téléchargé à la première demande)
+
+Rien n'est téléchargé tant que vous ne demandez pas de résumé par IA.
+Modèles convertis pour CTranslate2 (int8), exécutés sur le processeur :
+
+| Choix | Modèle | Taille | Mémoire (pic) | Licence |
+| --- | --- | --- | --- | --- |
+| Standard | Llama 3.2 3B Instruct (Meta) | 3,2 Go | ≈ 6,5 Go | **Llama 3.2 Community License** |
+| Léger | Qwen3 1.7B (Alibaba) | 1,7 Go | non mesuré (moins de la moitié) | Apache-2.0 |
+
+* **Llama 3.2 Community License** : gratuite, usage personnel et commercial
+  permis, avec conditions (mention « Built with Llama », politique
+  d'utilisation acceptable de Meta, licence spéciale au-delà de 700 millions
+  d'utilisateurs). Elle n'est **pas** une licence libre au sens OSI. À relire
+  avant toute redistribution.
+* **Qwen3 1.7B** : licence libre, mais nettement **moins fiable** dans nos
+  essais (mélange de personnages, consignes moins bien suivies) : à garder
+  pour les PC qui manquent de mémoire.
+
+Écartés : Qwen2.5 3B (licence « Qwen Research », usage non commercial),
+Qwen2.5 1.5B (inventions fréquentes), modèles 7B (mémoire insuffisante sur un
+PC de 8 à 16 Go en plus du doublage).
+
+Le modèle est déchargé de la mémoire 2 minutes après le dernier résumé.
+
 ## Détection de parole
 
 **Silero VAD v6** (fichier ONNX, licence **MIT**), fourni avec la bibliothèque

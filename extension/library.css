@@ -45,3 +45,18 @@ mark { background: #fff1a8; color: inherit; border-radius: 2px; }
   .seg { break-inside: avoid; }
   a { color: inherit; text-decoration: none; }
 }
+
+.subtabs { margin: 10px 0; }
+#summaryPanel h3 { margin: 18px 0 6px; font-size: 16px; }
+#summaryPanel h4 { margin: 12px 0 4px; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 0; list-style: none; }
+.chips li { padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; }
+.extrait { margin: 4px 0; }
+.point { margin: 4px 0; }
+.verif { font-size: 11px; margin-left: 6px; padding: 1px 6px; border-radius: 999px; }
+.verif.ok { background: color-mix(in srgb, var(--ok) 18%, var(--bg)); }
+.verif.doute { background: var(--warn-bg); color: var(--warn-fg); }
+.chapitre { border-left: 3px solid var(--line); padding-left: 10px; margin: 10px 0; }
+details.carte { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; margin: 6px 0; }
+details.carte summary { cursor: pointer; font-weight: 600; }
+.avert { background: var(--warn-bg); color: var(--warn-fg); border-radius: 6px; padding: 8px 10px; font-size: 13px; }
