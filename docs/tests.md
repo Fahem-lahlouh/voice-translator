@@ -235,6 +235,27 @@ Mesure utile en chemin : des propositions de 2,5 s **de capture** à × 1,5
 font 3,75 s de vidéo et regroupaient parfois deux phrases (écart max 0,54 s) ;
 la durée cible est donc divisée par la vitesse pendant la préparation.
 
+## 3 septies. Écran « Ma bibliothèque » (étape 4)
+
+Tests JavaScript : 7 sur les exports (horodatages, TXT, Markdown échappé,
+SRT français et bilingue, JSON, nom de fichier, recherche sans accents).
+
+Scénario `bibliothequeui` (données de test) : 12/12 — liste, **titre piégé
+affiché comme du texte** (aucun code injecté), tri, filtre, transcription
+horodatée, recherche avec surlignage, **correction et note enregistrées**,
+exports réels (5 fichiers téléchargés et relus), mise en page d'impression,
+recherche globale, ouverture YouTube à la bonne seconde (`&t=12s`),
+suppression.
+
+Scénario `bibliotheque` (vraies données) : « aller à ce moment » pendant
+une session positionne la vidéo doublée à 16,8 s pour une phrase à 16,9 s.
+
+Correction de l'environnement de test : le serveur Python intégré ne gère
+pas les requêtes partielles, donc **tout saut dans la vidéo de test
+repartait du début** (les retours arrière des scénarios précédents
+revenaient en fait à 0). Nouveau serveur `test/serveur_test.py` ; avec lui,
+la suite complète donne 77/77.
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |

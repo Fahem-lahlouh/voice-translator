@@ -247,6 +247,27 @@ async function handle(msg, sender) {
     case 'ui:cancelPrepare':
       if (!fromExtensionPage) return { ok: false };
       return (await hasOffscreen()) ? toOffscreen('cancelPrepare') : { ok: true };
+    case 'ui:seekVideo': {
+      // Bibliothèque : « aller à ce moment de la vidéo ».
+      if (!fromExtensionPage) return { ok: false };
+      const st = await currentState();
+      if (st.running && st.library && st.library.videoId === msg.videoId && st.tabId !== null) {
+        toTab(st.tabId, { type: 'command', command: 'seek', time: msg.time });
+        const tab = await chrome.tabs.update(st.tabId, { active: true });
+        await chrome.windows.update(tab.windowId, { focused: true });
+        return { ok: true, how: 'onglet' };
+      }
+      let url = '';
+      try { url = new URL(msg.url).href; } catch (_) { return { ok: false, error: 'Adresse de la vidéo inconnue.' }; }
+      if (!/^https?:/.test(url)) return { ok: false, error: 'Adresse de la vidéo invalide.' };
+      if (msg.site === 'youtube') {
+        const u = new URL(url);
+        u.searchParams.set('t', `${Math.floor(msg.time)}s`);
+        url = u.href;
+      }
+      await chrome.tabs.create({ url });
+      return { ok: true, how: msg.site === 'youtube' ? 'adresse' : 'ouverture' };
+    }
     case 'ui:stop':
       if (!fromExtensionPage) return { ok: false };
       return stop();

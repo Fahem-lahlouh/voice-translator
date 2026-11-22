@@ -789,6 +789,7 @@ function saveSegment(msg) {
   queueWrite(async () => {
     const res = await store.addSegment(videoId, seg);
     if (!currentVideo || currentVideo.id !== videoId) return;
+    state.library.videoId = videoId;
     if (res.status === 'enregistree') {
       state.library.saved += 1;
       knownSegs = insertSorted(knownSegs, res.segment);

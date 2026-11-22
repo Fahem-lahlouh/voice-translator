@@ -581,6 +581,22 @@ TESTS.bibliotheque = async () => {
       `${st.library.duplicates} passage(s) réentendu(s) reconnu(s) comme déjà traduit(s), ${overlaps} chevauchement(s)`);
     H.record('progression calculée', v && v.covered.length > 0 && v.duration > 70,
       `${Math.round(st.library.progress * 100)} % de la vidéo couverts`);
+
+    // Écran bibliothèque pendant la session : « aller à ce moment » fait
+    // sauter la vidéo de l'onglet doublé.
+    const lib = await S.ctx.newPage();
+    await lib.goto(`chrome-extension://${new URL(S.sw.url()).host}/library.html#video=${encodeURIComponent(v.id)}`);
+    await lib.waitForSelector('#segments li');
+    const target = db.segs.find((x) => /give it a name/i.test(x.en));
+    await lib.locator(`[id="seg-${target.id}"] button.time`).click();
+    const t0 = Date.now();
+    await H.sleep(600);
+    // La vidéo continue de jouer après le saut : on retranche le temps écoulé.
+    const vid = await S.page.evaluate(() => { const x = document.getElementById('v'); return { t: x.currentTime, r: x.playbackRate }; });
+    const landed = vid.t - ((Date.now() - t0) / 1000) * vid.r;
+    H.record('bibliothèque : « aller à ce moment » positionne la vidéo doublée', Math.abs(landed - target.start) < 0.8,
+      `arrivée ≈ ${landed.toFixed(1)} s, phrase à ${target.start.toFixed(1)} s`);
+    await lib.close();
     popup.close();
   } finally {
     await S.ctx.close().catch(() => {});
@@ -761,6 +777,114 @@ print(json.dumps({"orig": float(np.abs(a[:, 0]).max()), "fr": float(np.abs(a[:, 
       `${st2.sync.played} phrase(s) calée(s), écart médian ${m.median_abs} s, max ${m.max_abs} s, ${st2.sync.missed} manquée(s)`);
     popup.close();
   } finally { await S.close(); }
+};
+
+// 15) Écran « Ma bibliothèque » (données de test déterministes).
+TESTS.bibliothequeui = async () => {
+  const { ctx, sw } = await H.launch();
+  try {
+    const extId = new URL(sw.url()).host;
+    const page = await ctx.newPage();
+    await page.goto(`chrome-extension://${extId}/library.html`);
+    await page.evaluate(async () => {
+      const st = await import('./lib/store.js');
+      await st.clearAll();
+      const add = async (v, segs) => { await st.upsertVideo(v); for (const s of segs) await st.addSegment(v.id, s); };
+      await add({ id: 'youtube:abc', url: 'https://www.youtube.com/watch?v=abc', site: 'youtube', duration: 600,
+        title: 'Zebra <img src=x onerror="window.__xss=1"> talk' },
+      [{ start: 12, end: 15, en: 'Today we discover something interesting.', fr: "Aujourd'hui, nous découvrons quelque chose d'intéressant." }]);
+      await add({ id: 'udemy:spring:1', url: 'https://www.udemy.com/course/spring/learn/lecture/1', site: 'udemy',
+        duration: 8100, title: 'Introduction to Spring Boot' },
+      [{ start: 5, end: 7.5, en: 'Hello everyone, welcome to this course.', fr: 'Bonjour à tous, bienvenue dans cette formation.' },
+        { start: 20, end: 22, en: "Let's get started.", fr: "C'est parti." }]);
+    });
+    await page.reload();
+    await page.waitForSelector('#videos li');
+    const n = await page.locator('#videos li').count();
+    const xssImg = await page.locator('#videos img').count();
+    H.record('liste des vidéos affichée', n === 2, `${n} vidéo(s)`);
+    H.record('titre piégé affiché comme du texte (pas de HTML injecté)',
+      xssImg === 0 && !(await page.evaluate(() => window.__xss)), `${xssImg} image(s) injectée(s)`);
+    await page.selectOption('#sort', 'title');
+    const first = await page.locator('#videos li h3').first().textContent();
+    H.record('tri par titre', first.startsWith('Introduction'), first);
+    await page.selectOption('#site', 'udemy');
+    H.record('filtre par plateforme', (await page.locator('#videos li').count()) === 1);
+    await page.selectOption('#site', '');
+
+    // Transcription.
+    await page.click('text=Introduction to Spring Boot');
+    await page.waitForSelector('#segments li');
+    const rows = await page.locator('#segments li').count();
+    const firstTime = await page.locator('#segments li button.time').first().textContent();
+    H.record('transcription bilingue horodatée', rows === 2 && firstTime === '00:00:05', `${rows} phrase(s), première à ${firstTime}`);
+    await page.fill('#tq', 'FORMATION');
+    H.record('recherche dans la transcription (casse ignorée, surlignage)',
+      (await page.locator('#segments li').count()) === 1 && (await page.locator('#segments mark').count()) === 1);
+    await page.fill('#tq', '');
+
+    // Correction et note.
+    await page.locator('#segments li').first().locator('text=Modifier').click();
+    await page.fill('#segments li textarea', 'Bonjour à tous et bienvenue dans ce cours.');
+    await page.click('text=Enregistrer');
+    await page.waitForSelector('.badge');
+    await page.locator('#segments li').first().locator('text=Ajouter une note').click();
+    await page.fill('#segments li textarea', 'Point important');
+    await page.click('text=Enregistrer');
+    await page.waitForSelector('.note');
+    const saved = await page.evaluate(async () => {
+      const st = await import('./lib/store.js');
+      return (await st.getSegments('udemy:spring:1'))[0];
+    });
+    H.record('traduction corrigée et note enregistrées dans la base',
+      saved.fr === 'Bonjour à tous et bienvenue dans ce cours.' && saved.translationStatus === 'validee' && saved.note === 'Point important');
+
+    // Exports réels (téléchargements).
+    const exported = {};
+    for (const fmt of ['txt', 'md', 'srt', 'srt2', 'json']) {
+      const [dl] = await Promise.all([page.waitForEvent('download'), page.selectOption('#exportFmt', fmt)]);
+      exported[fmt] = { name: dl.suggestedFilename(), text: fs.readFileSync(await dl.path(), 'utf8') };
+    }
+    const ok = /EN : Hello everyone/.test(exported.txt.text) && /Point important/.test(exported.txt.text)
+      && /### 00:00:05/.test(exported.md.text)
+      && /^1\n00:00:05,000 --> 00:00:07,500\nBonjour à tous et bienvenue/.test(exported.srt.text)
+      && /Hello everyone/.test(exported.srt2.text)
+      && JSON.parse(exported.json.text).phrases.length === 2;
+    H.record('exports TXT, Markdown, SRT (français et bilingue), JSON', ok,
+      Object.values(exported).map((e) => e.name).join(', '));
+
+    // Impression (PDF) : seule la transcription est imprimée.
+    await page.emulateMedia({ media: 'print' });
+    const printHidesTools = !(await page.locator('.toolbar').first().isVisible()) && (await page.locator('#segments').isVisible());
+    await page.emulateMedia({ media: 'screen' });
+    H.record('mise en page d\'impression (PDF) sans les commandes', printHidesTools);
+
+    // Recherche globale, accents ignorés.
+    await page.click('#tabSearch');
+    await page.fill('#gq', 'interessant');
+    await page.waitForSelector('#gresults li');
+    H.record('recherche d\'une phrase dans toute la bibliothèque', (await page.locator('#gresults li').count()) === 1);
+
+    // Aller à ce moment : YouTube s'ouvre au bon moment. YouTube n'est pas
+    // joignable depuis l'environnement de test : on vérifie l'adresse demandée.
+    const [req] = await Promise.all([
+      ctx.waitForEvent('request', (r) => r.url().includes('youtube.com')),
+      page.locator('#gresults button.time').click(),
+    ]);
+    const url = req.url();
+    for (const pg of ctx.pages()) if (pg !== page) await pg.close().catch(() => {});
+    H.record('« aller à ce moment » ouvre YouTube à la bonne seconde', /[?&]t=12s/.test(url), url);
+
+    // Suppression.
+    page.on('dialog', (d) => d.accept());
+    await page.click('#tabVideos');
+    await page.waitForSelector('#videos li');
+    await page.locator('#videos li').filter({ hasText: 'Zebra' }).locator('text=Supprimer').click();
+    await H.sleep(500);
+    const left = await page.evaluate(async () => (await (await import('./lib/store.js')).stats()));
+    H.record('suppression d\'une vidéo et de ses phrases', left.videos === 1 && left.segments === 2,
+      `${left.videos} vidéo(s), ${left.segments} phrase(s) restante(s)`);
+  } finally { await ctx.close(); }
 };
 
 // --------------------------------------------------------------------- run

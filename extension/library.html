@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ma bibliothèque — doublage vocal local</title>
+  <link rel="stylesheet" href="ui.css">
+  <link rel="stylesheet" href="library.css">
+</head>
+<body class="library">
+  <header class="lib-head">
+    <h1><a href="#" id="home">Ma bibliothèque</a></h1>
+    <nav class="tabs" aria-label="Sections">
+      <button type="button" id="tabVideos" aria-pressed="true">Vidéos</button>
+      <button type="button" id="tabSearch" aria-pressed="false">Chercher une phrase</button>
+    </nav>
+  </header>
+
+  <div id="msg" class="notice" role="status" aria-live="polite" hidden></div>
+
+  <!-- Liste des vidéos -->
+  <main id="viewList">
+    <div class="toolbar">
+      <label class="grow">Rechercher une vidéo
+        <input type="search" id="q" placeholder="Titre, site…" autocomplete="off">
+      </label>
+      <label>Trier par
+        <select id="sort">
+          <option value="date">Date de visionnage</option>
+          <option value="title">Titre</option>
+          <option value="site">Plateforme</option>
+          <option value="progress">Progression</option>
+        </select>
+      </label>
+      <label>Plateforme
+        <select id="site"><option value="">Toutes</option></select>
+      </label>
+      <label>Langue
+        <select id="lang"><option value="">Toutes</option></select>
+      </label>
+    </div>
+    <p id="count" class="hint"></p>
+    <ul id="videos" class="cards" aria-label="Vidéos enregistrées"></ul>
+    <p id="empty" class="empty" hidden>Aucune vidéo enregistrée pour l'instant. Lancez le doublage sur une
+    vidéo : ses phrases traduites apparaîtront ici au fil de la lecture.</p>
+  </main>
+
+  <!-- Recherche dans toute la bibliothèque -->
+  <main id="viewSearch" hidden>
+    <div class="toolbar">
+      <label class="grow">Phrase à chercher (anglais, français ou notes)
+        <input type="search" id="gq" placeholder="ex. : shared resource, injection de dépendances…" autocomplete="off">
+      </label>
+    </div>
+    <p id="gcount" class="hint"></p>
+    <ul id="gresults" class="results"></ul>
+  </main>
+
+  <!-- Transcription d'une vidéo -->
+  <main id="viewVideo" hidden>
+    <p class="noprint"><a href="#" id="back">← Toutes les vidéos</a></p>
+    <h2 id="vTitle"></h2>
+    <p id="vMeta" class="hint"></p>
+    <div class="progress-line"><progress id="vProgress" max="1" value="0"></progress><span id="vProgressText" class="hint"></span></div>
+
+    <div class="toolbar noprint">
+      <label class="grow">Chercher dans la transcription
+        <input type="search" id="tq" autocomplete="off">
+      </label>
+      <label>Exporter
+        <select id="exportFmt">
+          <option value="">Choisir un format…</option>
+          <option value="txt">Texte (.txt)</option>
+          <option value="md">Markdown (.md)</option>
+          <option value="pdf">PDF (impression)</option>
+          <option value="srt">Sous-titres français (.srt)</option>
+          <option value="srt2">Sous-titres bilingues (.srt)</option>
+          <option value="json">JSON (.json)</option>
+        </select>
+      </label>
+      <button type="button" id="copySel" disabled>Copier la sélection</button>
+      <button type="button" id="openVideo">Ouvrir la vidéo</button>
+      <button type="button" id="deleteVideo" class="danger">Supprimer</button>
+    </div>
+    <p id="tcount" class="hint noprint"></p>
+    <ol id="segments" class="segments" aria-label="Transcription bilingue"></ol>
+  </main>
+
+  <script type="module" src="library.js"></script>
+</body>
+</html>

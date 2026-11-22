@@ -105,7 +105,7 @@ la traduction.
    projet et lancez :
 
    ```bat
-   server\.venv\Scripts\python.exe -m http.server 8777 --directory test
+   server\.venv\Scripts\python.exe test\serveur_test.py
    ```
 
    puis ouvrez <http://127.0.0.1:8777/page/> dans Chrome.

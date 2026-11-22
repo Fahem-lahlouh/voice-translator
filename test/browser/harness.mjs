@@ -42,7 +42,9 @@ export function startServer({ profile = 'prudent', port = SERVER_PORT, extraArgs
 }
 
 export function startPageServer() {
-  const proc = spawn('python3', ['-m', 'http.server', String(PORT), '--bind', '127.0.0.1'],
+  // Serveur avec requêtes partielles : sans elles, Chrome ne peut pas sauter
+  // au milieu du fichier audio (tout saut repartirait du début).
+  const proc = spawn('python3', [path.join(ROOT, 'test/serveur_test.py'), String(PORT)],
     { cwd: path.join(ROOT, 'test'), stdio: 'ignore' });
   return { proc, stop: () => proc.kill('SIGKILL') };
 }

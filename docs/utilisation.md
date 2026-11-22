@@ -60,6 +60,28 @@ Des messages apparaissent aussi quand des passages ont été ignorés (PC trop
 lent), sautés (voix trop en retard) ou jugés trop incertains pour être
 traduits.
 
+## Ma bibliothèque (écran)
+
+Lien **« Ma bibliothèque »** en bas de la fenêtre de l'extension (ou dans les
+options). On y trouve :
+
+* **la liste de vos vidéos** : recherche par titre, tri (date, titre,
+  plateforme, progression), filtres par plateforme et par langue, progression,
+  suppression ;
+* **la transcription bilingue** de chaque vidéo, horodatée : recherche avec
+  surlignage (accents et majuscules ignorés), **cliquer sur une heure** pour
+  aller à ce moment de la vidéo, copier une phrase ou une sélection,
+  **corriger une traduction** (c'est la version corrigée qui sera lue
+  ensuite) et **ajouter une note** ;
+* **les exports** : texte, Markdown, PDF (via l'impression de Chrome :
+  « Enregistrer au format PDF »), sous-titres SRT français ou bilingues, JSON ;
+* **la recherche d'une phrase dans toute la bibliothèque**.
+
+« Aller à ce moment » : si la vidéo est en cours de doublage dans un onglet,
+elle s'y positionne directement ; sinon elle est ouverte dans un nouvel
+onglet, au bon moment sur YouTube, au début sur les autres sites (Udemy ne
+permet pas d'ouvrir une leçon à une position précise : l'heure est rappelée).
+
 ## Bibliothèque (enregistrement des sessions)
 
 Activée par défaut. Pendant le doublage, chaque phrase traduite est
@@ -73,7 +95,6 @@ Ce qui est enregistré : titre et adresse de la page, durée de la vidéo,
 phrases anglaises et françaises horodatées. Jamais le son ni l'image.
 
 Options → **Bibliothèque** : désactiver l'enregistrement ou tout effacer.
-L'interface pour parcourir, chercher et exporter arrive à l'étape suivante.
 
 ## Lecture synchronisée (façon film)
 

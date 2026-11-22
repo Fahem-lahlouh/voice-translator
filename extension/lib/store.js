@@ -187,6 +187,23 @@ export async function getSegments(videoId) {
   return req2p(tx(db, ['segments']).objectStore('segments').index('byVideo').getAll(range));
 }
 
+// Recherche d'une phrase dans toute la bibliothèque (anglais, français, notes).
+export async function searchAll(query, limit = 200) {
+  const { matches } = await import('./exporters.js');
+  const db = await openDb();
+  const t = tx(db, ['videos', 'segments']);
+  const [videos, segs] = await Promise.all([
+    req2p(t.objectStore('videos').getAll()), req2p(t.objectStore('segments').getAll()),
+  ]);
+  const byId = new Map(videos.map((v) => [v.id, v]));
+  const out = [];
+  for (const s of segs) {
+    if (out.length >= limit) break;
+    if (matches(s, query) && byId.has(s.videoId)) out.push({ video: byId.get(s.videoId), segment: s });
+  }
+  return out;
+}
+
 export async function updateSegment(id, patch) {
   const db = await openDb();
   const t = tx(db, ['segments'], 'readwrite');
