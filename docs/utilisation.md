@@ -88,6 +88,27 @@ Au premier visionnage, c'est le doublage en direct (quelques secondes de
 décalage) qui s'applique. Option dans la fenêtre de l'extension : « Lecture
 synchronisée ». Elle demande que la bibliothèque soit activée.
 
+## Préparer le doublage (doublage calé dès le premier visionnage)
+
+Bouton **« Préparer le doublage de cette vidéo »** dans la fenêtre de
+l'extension (il démarre aussi la capture si besoin) :
+
+1. la vidéo est lue **en accéléré (× 1,5), son coupé**, sans voix française ;
+   un bandeau indique la progression et le temps restant ;
+2. chaque phrase est traduite et enregistrée dans la bibliothèque ;
+3. à la fin, la vidéo revient à son point de départ, en pause, vitesse
+   normale : lancez la lecture, chaque phrase est doublée **au moment où
+   l'anglais commence**.
+
+Compter environ les deux tiers de la durée de la vidéo (mesuré : 53 s pour
+76 s). Sur un PC lent, la lecture est automatiquement ralentie (× 1,25, × 1)
+voire mise en pause, plutôt que de perdre des phrases. Les passages déjà
+traduits sont sautés. « Annuler la préparation » garde ce qui est déjà fait.
+
+Ne marche que sur une vidéo à la demande avec un lecteur contrôlable (pas
+sur un direct). Rien n'est téléchargé : seul le son est capté, comme pour le
+doublage en direct.
+
 ## Type de contenu
 
 Par défaut **automatique** : d'après le site (Udemy, Coursera… → formation ;

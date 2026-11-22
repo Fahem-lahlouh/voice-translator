@@ -680,6 +680,89 @@ TESTS.synchro = async () => {
   } finally { await S.close(); }
 };
 
+// 14) « Préparer le doublage » : tout traduire à l'avance, puis premier visionnage calé.
+TESTS.preparation = async () => {
+  const S = await session();
+  const record = async (off) => off.evaluate(`
+    const s = __doublage.tapStereo();
+    const rec = new MediaRecorder(s, { mimeType: 'audio/webm;codecs=opus' });
+    globalThis.__chunks = []; rec.ondataavailable = (e) => { if (e.data.size) __chunks.push(e.data); };
+    rec.start(500); globalThis.__rec = rec; return true;`);
+  const save = async (off, name) => {
+    const b64 = await off.evaluate(`
+      __rec.stop(); await new Promise((r) => setTimeout(r, 400));
+      const buf = new Uint8Array(await new Blob(__chunks).arrayBuffer());
+      let s = ''; for (let i = 0; i < buf.length; i++) s += String.fromCharCode(buf[i]); return btoa(s);`);
+    const webm = path.join(OUT, `${name}.webm`);
+    const wav = path.join(OUT, `${name}.wav`);
+    fs.writeFileSync(webm, Buffer.from(b64, 'base64'));
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', '-i', webm, '-ac', '2', '-ar', '16000', wav]);
+    return wav;
+  };
+  try {
+    await S.sw.evaluate(async () => {
+      const { settings } = await chrome.storage.local.get('settings');
+      await chrome.storage.local.set({ settings: { ...settings, originalVolume: 1, duck: false } });
+    });
+    const popup = await S.popup();
+    await popup.evaluate('document.getElementById("prepare").click(); return true;');
+    await H.waitFor('préparation lancée', async () => {
+      const st = await S.state();
+      if (st && st.prepare && st.prepare.error) throw new Error(st.prepare.error);
+      return st && st.prepare && st.prepare.active;
+    }, { timeout: 60000 });
+    await instrument(S);
+    const off = await S.offscreen();
+    await record(off);
+    const t0 = Date.now();
+    await H.sleep(4000);
+    const rate = await S.page.evaluate(() => document.getElementById('v').playbackRate);
+    H.record('préparation : vidéo lue en accéléré', Math.abs(rate - 1.5) < 0.01 || rate === 1.25, `× ${rate}`);
+    const st = await H.waitFor('préparation terminée', async () => {
+      const x = await S.state();
+      return x && x.prepare.phase === 'pret' ? x : false;
+    }, { timeout: 180000, step: 1000 });
+    const elapsed = (Date.now() - t0) / 1000;
+    const silentWav = await save(off, 'preparation');
+    const silence = JSON.parse(execFileSync(H.PY, ['-c', `
+import wave, numpy as np, json
+w = wave.open(${JSON.stringify(silentWav)}); a = np.frombuffer(w.readframes(w.getnframes()), dtype='<i2').reshape(-1, 2)
+print(json.dumps({"orig": float(np.abs(a[:, 0]).max()), "fr": float(np.abs(a[:, 1]).max())}))`], { encoding: 'utf8' }));
+    H.record('préparation : son coupé, aucune voix jouée', silence.orig < 200 && silence.fr < 200,
+      `crête son d'origine ${silence.orig}, crête voix française ${silence.fr} (sur 32767)`);
+    H.record('préparation plus rapide que la vidéo', elapsed < 76 * 0.85,
+      `${elapsed.toFixed(0)} s pour une vidéo de 76 s (dont la finalisation)`);
+    const v = await S.page.evaluate(() => { const x = document.getElementById('v'); return { t: x.currentTime, r: x.playbackRate, p: x.paused }; });
+    H.record('fin de préparation : retour au début, vidéo en pause, vitesse rétablie',
+      v.p && v.t < 1.5 && Math.abs(v.r - 1) < 0.01, `position ${v.t.toFixed(1)} s, × ${v.r}, ${v.p ? 'en pause' : 'en lecture'}`);
+    const db = await off.evaluate(`
+      const st = await import('./lib/store.js'); const vids = await st.listVideos();
+      return { segs: await st.getSegments(vids[0].id), video: vids[0] };`);
+    const script = fs.readFileSync(path.join(H.ROOT, 'test/audio/tibco_demo_en.txt'), 'utf8');
+    const words = (t) => t.toLowerCase().match(/[a-z0-9']+/g) || [];
+    const ref = words(script);
+    const got = words(db.segs.map((x) => x.en).join(' '));
+    const common = ref.filter((w) => got.includes(w)).length;
+    const lastEnd = Math.max(...db.segs.map((x) => x.end));
+    H.record('préparation : toute la vidéo traduite et enregistrée', lastEnd > 70 && common / ref.length > 0.9,
+      `${db.segs.length} phrase(s), jusqu'à ${lastEnd.toFixed(1)} s, ${Math.round(100 * common / ref.length)} % des mots du texte de référence retrouvés`);
+
+    // Premier visionnage : tout doit être calé dès le début.
+    await record(off);
+    await S.page.evaluate(() => document.getElementById('v').play());
+    await H.sleep(32000);
+    const wav = await save(off, 'apres-preparation');
+    const m = JSON.parse(execFileSync('python3', [path.join(H.HERE, 'mesure_synchro.py'), wav], { encoding: 'utf8' }));
+    const st2 = await S.state();
+    off.close();
+    fs.writeFileSync(path.join(OUT, 'preparation.json'), JSON.stringify({ mesure: m, prepare: st.prepare, sync: st2.sync }, null, 1));
+    H.record('premier visionnage après préparation : voix calée sur l\'anglais',
+      m.median_abs !== null && m.median_abs <= 0.3 && st2.sync.played >= 6 && st2.sync.missed === 0,
+      `${st2.sync.played} phrase(s) calée(s), écart médian ${m.median_abs} s, max ${m.max_abs} s, ${st2.sync.missed} manquée(s)`);
+    popup.close();
+  } finally { await S.close(); }
+};
+
 // --------------------------------------------------------------------- run
 
 const names = Object.keys(TESTS).filter(want);

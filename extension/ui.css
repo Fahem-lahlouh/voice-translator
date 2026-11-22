@@ -80,3 +80,5 @@ textarea { width: 100%; min-height: 300px; padding: 10px; font: 13px/1.5 ui-mono
 .actions { display: flex; gap: 8px; margin: 12px 0; flex-wrap: wrap; align-items: center; }
 code { background: var(--panel); padding: 1px 5px; border-radius: 4px; font-size: 12.5px; }
 ul.compact { margin: 6px 0; padding-left: 20px; }
+.prepare { display: grid; gap: 6px; }
+.prepare button { width: 100%; }

@@ -13,6 +13,9 @@
 // La voix française n'est jouée que par ce document : elle ne fait pas partie
 // du son de l'onglet et ne peut donc pas être re-capturée (pas de boucle).
 
+import {
+  PREP_RATE, coveredFrom, paceFor, reachedEnd, remainingS, skipTarget,
+} from './lib/prepare.js';
 import * as store from './lib/store.js';
 import {
   START_OFFSET_S, coveredBySync, dueToStart, insertSorted, maxDuration, prepKey, toPrepare,
@@ -48,6 +51,8 @@ const state = {
   library: { enabled: true, title: '', saved: 0, duplicates: 0, progress: null, timeBase: '', error: '' },
   // Lecture synchronisée des phrases déjà traduites.
   sync: { enabled: true, known: 0, played: 0, missed: 0, suppressed: 0, avgError: null, maxError: null },
+  // Préparation du doublage (lecture accélérée, son coupé).
+  prepare: { active: false, phase: '', progress: 0, rate: 0, remaining: null, elapsed: 0, error: '' },
 };
 
 let settings = null; // réglages de l'extension (volumes, etc.)
@@ -90,6 +95,7 @@ let syncSources = []; // voix synchronisées en cours
 let syncTimer = null;
 let syncErrors = []; // écart (s) entre le début de l'anglais et celui du français
 const syncLog = [];
+let prep = null; // préparation en cours
 let queue = []; // [{ buffer, header }]
 let current = null; // { source, header, endsAt }
 let playTimer = null;
@@ -186,6 +192,11 @@ async function handleCommand(msg) {
       return { ok: true };
     case 'testVoice':
       return testVoice(msg);
+    case 'prepare':
+      return startPrepare();
+    case 'cancelPrepare':
+      if (prep) endPrepare(false);
+      return { ok: true };
     case 'connect': // popup ouverte : vérifier que le serveur répond
       applySettings(msg.settings, msg.serverSettings, msg.port, msg.token);
       ensureSocket();
@@ -207,7 +218,7 @@ async function handleCommand(msg) {
 function applySettings(next, nextServer, nextPort, nextToken) {
   if (next) settings = next;
   if (nextServer) {
-    serverSettings = { ...nextServer, videoRate: state.media.rate || 1 };
+    serverSettings = { ...nextServer, videoRate: state.media.rate || 1, voiceOff: !!prep };
     if (helloOk && state.running) send({ type: 'settings', settings: serverSettings });
   }
   if (typeof nextToken === 'string') token = nextToken;
@@ -223,6 +234,12 @@ function updateGains() {
   if (!playCtx || !settings) return;
   const t = playCtx.currentTime;
   let orig = settings.originalVolume;
+  if (prep) {
+    // Préparation : la vidéo défile en accéléré, rien n'est joué.
+    origGain.gain.setTargetAtTime(0, t, 0.05);
+    frGain.gain.setTargetAtTime(0, t, 0.05);
+    return;
+  }
   if (state.paused) orig = 1; // traduction en pause : on rend le son d'origine
   else if (settings.duck && (current || syncSources.length)) orig *= DUCK_FACTOR;
   origGain.gain.setTargetAtTime(orig, t, 0.08);
@@ -432,6 +449,7 @@ async function start({ streamId, tabId, settings: s, serverSettings: ss, port: p
     avgError: null, maxError: null };
   syncLog.length = 0;
   syncErrors = [];
+  state.prepare = { active: false, phase: '', progress: 0, rate: 0, remaining: null, elapsed: 0, error: '' };
   state.library = { enabled: settings.saveSessions !== false, title: '', saved: 0, duplicates: 0,
     progress: null, timeBase: '', error: '' };
   lastSpeechAt = 0;
@@ -508,6 +526,7 @@ function resume() {
 
 async function stop(reason) {
   const tabId = state.tabId;
+  if (prep) endPrepare(false);
   stopSync();
   clearInterval(syncTimer);
   syncTimer = null;
@@ -787,7 +806,7 @@ function saveSegment(msg) {
 // --------------------------------------------------- lecture synchronisée
 
 function syncOn() {
-  return state.running && !state.paused && settings && settings.syncPlayback !== false;
+  return state.running && !state.paused && !prep && settings && settings.syncPlayback !== false;
 }
 
 async function loadKnownSegments(videoId) {
@@ -892,6 +911,118 @@ function onPreparedVoice(header, pcm) {
   if (preparedBuffers.size > 80) preparedBuffers.delete(preparedBuffers.keys().next().value);
 }
 
+// ------------------------------------------------- préparation du doublage
+
+function mediaCmd(command, extra = {}) {
+  if (state.tabId !== null) toSw('mediaCommand', { tabId: state.tabId, command, ...extra });
+}
+
+function setVoiceOff(off) {
+  if (!serverSettings) return;
+  serverSettings = { ...serverSettings, voiceOff: off };
+  if (helloOk) send({ type: 'settings', settings: serverSettings });
+}
+
+async function startPrepare() {
+  if (!state.running) return { ok: false, error: 'Démarrez d\'abord le doublage sur cet onglet.' };
+  if (prep) return { ok: true };
+  if (!libraryOn()) {
+    return { ok: false, error: 'La préparation enregistre les phrases dans la bibliothèque : '
+      + 'activez « Enregistrer mes sessions » dans les options.' };
+  }
+  // Le script du lecteur peut mettre un instant à répondre après le démarrage.
+  for (let i = 0; i < 30 && !timeline.hasMedia; i++) await new Promise((r) => setTimeout(r, 100));
+  if (!timeline.hasMedia || !currentVideo) {
+    return { ok: false, error: 'Aucun lecteur vidéo contrôlable sur cette page : la préparation est '
+      + 'impossible (le doublage en direct reste disponible).' };
+  }
+  const last = timeline.media[timeline.media.length - 1];
+  const from = Math.max(0, timeline.wallToMedia(Date.now()) || 0);
+  prep = { from, userRate: last.rate || 1, t0: performance.now(), finishingSince: 0, pausedByPace: false,
+    lastBanner: 0, timer: null };
+  state.prepare = { active: true, phase: 'preparation', progress: 0, rate: PREP_RATE, remaining: null,
+    elapsed: 0, error: '' };
+  stopSync();
+  clearPlayback();
+  setVoiceOff(true);
+  updateGains();
+  mediaCmd('setRate', { rate: PREP_RATE });
+  mediaCmd('play');
+  prep.timer = setInterval(prepTick, 400);
+  broadcast(true);
+  return { ok: true };
+}
+
+function prepTick() {
+  if (!prep || !state.running) return;
+  const last = timeline.media[timeline.media.length - 1];
+  const mediaNow = timeline.wallToMedia(Date.now());
+  if (!last || mediaNow === null) return;
+  const now = performance.now();
+  state.prepare.elapsed = Math.round((now - prep.t0) / 1000);
+  const idle = !serverBusy && (state.metrics.asrBacklog || 0) === 0 && serverTtsQueue === 0;
+
+  if (prep.finishingSince) {
+    // Fin de la vidéo : on attend que le serveur ait traité les dernières phrases.
+    if ((idle && now - prep.finishingSince > 1500) || now - prep.finishingSince > 15000) endPrepare(true);
+    return;
+  }
+  if (reachedEnd(mediaNow, mediaDuration, last.paused)) {
+    prep.finishingSince = now;
+    state.prepare.phase = 'finalisation';
+    mediaCmd('pause');
+    broadcast(true);
+    return;
+  }
+  // Cadence : ralentir (ou mettre en pause) si la reconnaissance prend du retard.
+  const pace = paceFor(state.metrics.asrBacklog || 0);
+  if (pace === 0) {
+    if (!last.paused) { mediaCmd('pause'); prep.pausedByPace = true; }
+  } else {
+    if (Math.abs(pace - (last.rate || 1)) > 0.01) mediaCmd('setRate', { rate: pace });
+    if (prep.pausedByPace && last.paused) { mediaCmd('play'); prep.pausedByPace = false; }
+  }
+  state.prepare.rate = pace;
+  // Passage déjà traduit : on le saute (quand le serveur n'a rien en cours).
+  const target = idle ? skipTarget(coveredFrom(knownSegs), mediaNow) : null;
+  if (target !== null) mediaCmd('seek', { time: target });
+  // Progression.
+  if (mediaDuration) {
+    const span = Math.max(1, mediaDuration - prep.from);
+    state.prepare.progress = Math.min(1, Math.max(0, (mediaNow - prep.from) / span));
+    state.prepare.remaining = Math.round(remainingS(mediaNow, mediaDuration, pace || 1));
+  }
+  if (now - prep.lastBanner > 2000) {
+    prep.lastBanner = now;
+    const pct = Math.round(state.prepare.progress * 100);
+    const rest = state.prepare.remaining;
+    toSw('subtitle', { tabId: state.tabId, duration: 3,
+      fr: `Préparation du doublage : ${pct} %${rest !== null ? ` — environ ${Math.max(1, Math.ceil(rest / 60))} min restante(s)` : ''}` });
+  }
+  broadcast();
+}
+
+function endPrepare(completed) {
+  const p = prep;
+  if (!p) return;
+  clearInterval(p.timer);
+  prep = null;
+  setVoiceOff(false);
+  mediaCmd('setRate', { rate: p.userRate });
+  if (completed) {
+    mediaCmd('pause');
+    mediaCmd('seek', { time: p.from });
+    state.prepare = { ...state.prepare, active: false, phase: 'pret', progress: 1, remaining: 0 };
+    toSw('subtitle', { tabId: state.tabId, duration: 6,
+      fr: 'Doublage prêt : lancez la lecture, chaque phrase sera doublée au bon moment.' });
+  } else {
+    state.prepare = { ...state.prepare, active: false, phase: 'annulee' };
+    toSw('subtitle', { tabId: state.tabId, clear: true });
+  }
+  updateGains();
+  broadcast(true);
+}
+
 // ---------------------------------------------------------- lecteur vidéo
 
 let seekDebounce = null;
@@ -934,6 +1065,12 @@ function onMediaEvent(msg) {
       break;
     case 'pause':
       if (!msg.byExtension) stopSync(); // vidéo en pause : la voix synchronisée s'arrête aussi
+      break;
+    case 'playRefused':
+      if (prep) {
+        state.prepare.error = 'Le site a refusé de lancer la vidéo : cliquez sur lecture dans le lecteur, '
+          + 'la préparation continuera.';
+      }
       break;
     case 'ratechange':
       onRate(msg.rate);
@@ -1017,6 +1154,7 @@ globalThis.__doublage = {
   get video() { return currentVideo; },
   flushWrites: () => writeChain,
   syncLog,
+  get preparing() { return !!prep; },
   queuedSeconds,
   // Renvoie un flux contenant ce qui est envoyé aux haut-parleurs :
   // 'fr' = voix française seule, 'orig' = son de l'onglet seul, sinon les deux.

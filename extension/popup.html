@@ -27,6 +27,14 @@
     <button type="button" id="stop" disabled>Arrêter</button>
   </section>
 
+  <section aria-label="Préparation du doublage" class="prepare">
+    <button type="button" id="prepare">Préparer le doublage de cette vidéo</button>
+    <button type="button" id="cancelPrepare" hidden>Annuler la préparation</button>
+    <progress id="prepBar" max="1" value="0" hidden></progress>
+    <p id="prepInfo" class="hint">Lit la vidéo en accéléré, son coupé, pour tout traduire à l'avance :
+    ensuite, chaque phrase est doublée pile au bon moment.</p>
+  </section>
+
   <section id="models" aria-label="Chargement des modèles" hidden>
     <h2>Préparation des moteurs</h2>
     <div class="model"><label for="pAsr">Reconnaissance vocale <span id="lAsr"></span></label><progress id="pAsr" max="1" value="0"></progress></div>

@@ -225,6 +225,9 @@
         commandUntil = performance.now() + 800;
         if (msg.command === 'pause' && !media.paused) media.pause();
         else if (msg.command === 'play' && media.paused) media.play().catch(() => send('playRefused'));
+        else if (msg.command === 'setRate' && msg.rate >= 0.25 && msg.rate <= 4) media.playbackRate = msg.rate;
+        else if (msg.command === 'seek' && Number.isFinite(msg.time) && msg.time >= 0) media.currentTime = msg.time;
+        else if (msg.command === 'mute') media.muted = !!msg.muted;
         break;
       case 'subtitle':
         // La page principale affiche les sous-titres ; un cadre interne ne le

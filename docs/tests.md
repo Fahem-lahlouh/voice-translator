@@ -215,6 +215,26 @@ gauche, français à droite) et détection des débuts de phrase dans l'audio.
 Avant compensation, le français partait 0,14 s trop tôt (marge de début de
 segment + latence de capture) : un décalage fixe de 0,15 s a été ajouté.
 
+## 3 sexies. Préparer le doublage (étape 3)
+
+Tests JavaScript : 4 sur la préparation (cadence selon la charge, saut des
+passages connus, fin de vidéo, temps restant).
+
+Scénario `preparation` dans un vrai Chrome (extrait TIBCO de 76 s) :
+
+| Vérification | Résultat |
+| --- | --- |
+| Vidéo lue en accéléré | × 1,5 |
+| Son coupé, aucune voix pendant la préparation | crêtes 2 et 0 sur 32 767 |
+| Durée de préparation | 53 s pour 76 s de vidéo |
+| Fin : retour au début, en pause, vitesse rétablie | position 0,0 s, × 1 |
+| Vidéo entièrement traduite | jusqu'à 76,5 s ; 98 % des mots du texte de référence retrouvés |
+| **Premier visionnage ensuite** | 8 phrases calées, **écart médian 0,12 s, max 0,18 s**, aucune manquée |
+
+Mesure utile en chemin : des propositions de 2,5 s **de capture** à × 1,5
+font 3,75 s de vidéo et regroupaient parfois deux phrases (écart max 0,54 s) ;
+la durée cible est donc divisée par la vitesse pendant la préparation.
+
 ## 4. Vérifications de sécurité
 
 | Vérification | Méthode | Résultat |

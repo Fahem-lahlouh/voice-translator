@@ -151,6 +151,28 @@ function render() {
   $('libInfo').textContent = libText;
   $('libInfo').hidden = !libText;
 
+  const pr = s.prepare || {};
+  $('prepare').hidden = !!pr.active;
+  $('prepare').disabled = busy;
+  $('cancelPrepare').hidden = !pr.active;
+  $('prepBar').hidden = !pr.active;
+  $('prepBar').value = pr.progress || 0;
+  let prepText = 'Lit la vidéo en accéléré, son coupé, pour tout traduire à l\'avance : '
+    + 'ensuite, chaque phrase est doublée pile au bon moment.';
+  if (pr.active && pr.phase === 'preparation') {
+    prepText = `Préparation : ${Math.round((pr.progress || 0) * 100)} %`
+      + (pr.remaining !== null && pr.remaining !== undefined ? ` — environ ${Math.max(1, Math.ceil(pr.remaining / 60))} min restante(s)` : '')
+      + (pr.rate === 0 ? ' — en pause, le temps que la traduction rattrape' : ` — lecture × ${String(pr.rate).replace('.', ',')}`);
+  } else if (pr.active && pr.phase === 'finalisation') {
+    prepText = 'Préparation : traitement des dernières phrases…';
+  } else if (pr.phase === 'pret') {
+    prepText = `Doublage prêt (${pr.elapsed} s de préparation) : lancez la lecture, chaque phrase sera doublée au bon moment.`;
+  } else if (pr.phase === 'annulee') {
+    prepText = 'Préparation annulée : les phrases déjà traduites sont conservées.';
+  }
+  if (pr.error) prepText = pr.error;
+  $('prepInfo').textContent = prepText;
+
   $('lastFr').textContent = s.last.fr || '';
   $('lastEn').textContent = s.last.en || '';
 
@@ -224,6 +246,11 @@ function bind() {
   }));
   $('pause').addEventListener('click', () => withBusy(() => sw(state.paused ? 'ui:resume' : 'ui:pause')));
   $('stop').addEventListener('click', () => withBusy(() => sw('ui:stop')));
+  $('prepare').addEventListener('click', () => withBusy(async () => {
+    if (!currentTab) return { ok: false, error: 'Onglet actif introuvable.' };
+    return sw('ui:prepare', { tabId: currentTab.id });
+  }));
+  $('cancelPrepare').addEventListener('click', () => withBusy(() => sw('ui:cancelPrepare')));
   $('showTab').addEventListener('click', () => {
     if (state && state.tabId !== null) chrome.tabs.update(state.tabId, { active: true });
   });

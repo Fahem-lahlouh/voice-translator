@@ -234,6 +234,19 @@ async function handle(msg, sender) {
     case 'ui:resume':
       if (!fromExtensionPage) return { ok: false };
       return (await hasOffscreen()) ? toOffscreen('resume') : { ok: true };
+    case 'ui:prepare': {
+      // Démarre le doublage sur cet onglet si besoin, puis lance la préparation.
+      if (!fromExtensionPage) return { ok: false };
+      const st = await currentState();
+      if (!st.running || st.tabId !== msg.tabId) {
+        const res = await start(msg.tabId);
+        if (!res.ok) return res;
+      }
+      return toOffscreen('prepare');
+    }
+    case 'ui:cancelPrepare':
+      if (!fromExtensionPage) return { ok: false };
+      return (await hasOffscreen()) ? toOffscreen('cancelPrepare') : { ok: true };
     case 'ui:stop':
       if (!fromExtensionPage) return { ok: false };
       return stop();
@@ -265,7 +278,7 @@ async function handle(msg, sender) {
       toTab(msg.tabId, { type: 'subtitleConfig', enabled: !!msg.enabled });
       return { ok: true };
     case 'mediaCommand':
-      toTab(msg.tabId, { type: 'command', command: msg.command });
+      toTab(msg.tabId, { type: 'command', command: msg.command, rate: msg.rate, time: msg.time, muted: msg.muted });
       return { ok: true };
     case 'stopped': // arrêt décidé par le document offscreen (onglet fermé, etc.)
       await afterStop();

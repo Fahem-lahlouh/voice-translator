@@ -57,6 +57,7 @@ class Settings:
     auto_speedup: bool = True
     glossary: Glossary = None  # type: ignore[assignment]
     content_mode: str = "auto"  # auto | film | formation | documentaire | conversation
+    voice_off: bool = False  # préparation du doublage : traduire sans produire de voix
     pronouncer: Pronouncer = None  # type: ignore[assignment]
 
     def __post_init__(self):
@@ -72,7 +73,7 @@ def parse_settings(raw: dict, base: Optional[Settings] = None) -> Settings:
         raise ValueError("réglages : objet attendu")
     s = Settings() if base is None else Settings(**vars(base))
     allowed = {"source", "target", "voice", "rate", "videoRate", "autoSpeedup", "glossary",
-               "pronunciation", "contentMode"}
+               "pronunciation", "contentMode", "voiceOff"}
     unknown = set(raw) - allowed
     if unknown:
         raise ValueError(f"réglages inconnus : {', '.join(sorted(unknown))}")
@@ -91,6 +92,10 @@ def parse_settings(raw: dict, base: Optional[Settings] = None) -> Settings:
             if not isinstance(v, (int, float)) or isinstance(v, bool) or not (lo <= v <= hi):
                 raise ValueError(f"valeur invalide pour {key}")
             setattr(s, attr, float(v))
+    if "voiceOff" in raw:
+        if not isinstance(raw["voiceOff"], bool):
+            raise ValueError("voiceOff : booléen attendu")
+        s.voice_off = raw["voiceOff"]
     if "autoSpeedup" in raw:
         if not isinstance(raw["autoSpeedup"], bool):
             raise ValueError("autoSpeedup : booléen attendu")
@@ -195,14 +200,26 @@ class Session:
         self._apply_content_mode()
 
     def _base_segment_target(self) -> float:
-        return SEGMENT_TARGET.get(self.settings.content_mode, self.cfg.soft_max_segment_s)
+        base = SEGMENT_TARGET.get(self.settings.content_mode, self.cfg.soft_max_segment_s)
+        if self.settings.voice_off and self.settings.video_rate > 1:
+            # Préparation en accéléré : des propositions de même durée en temps
+            # vidéo, pour que la lecture synchronisée reste précise phrase par
+            # phrase (sinon une proposition préparée regroupe deux phrases).
+            base = max(1.5, base / self.settings.video_rate)
+        return base
 
     def _apply_content_mode(self) -> None:
+        self._set_segment_target()
+
+    def _set_segment_target(self) -> None:
+        """Durée cible des propositions : celle du type de contenu, allongée
+        si la reconnaissance est lente sur ce PC (coût fixe par appel)."""
         base = self._base_segment_target()
-        if self.segmenter.soft_max_s < base or self._asr_call_ema is None:
-            self.segmenter.soft_max_s = base
-            self.segmenter.hard_max_s = max(self.cfg.hard_max_segment_s - (self.cfg.soft_max_segment_s - base),
-                                            base + 2.0)
+        target = base
+        if self.cfg.adaptive_segments and self._asr_call_ema is not None:
+            target = min(8.0, max(base, 3.5 * self._asr_call_ema))
+        self.segmenter.soft_max_s = target
+        self.segmenter.hard_max_s = target + 2.5
 
     def reset(self, epoch: int) -> None:
         """Jette tout le travail en cours (changement de vidéo, saut, pause)."""
@@ -444,12 +461,7 @@ class Session:
         """
         e = self._asr_call_ema
         self._asr_call_ema = asr_s if e is None else 0.7 * e + 0.3 * asr_s
-        if not self.cfg.adaptive_segments:
-            return
-        base = self._base_segment_target()
-        target = min(8.0, max(base, 3.5 * self._asr_call_ema))
-        self.segmenter.soft_max_s = target
-        self.segmenter.hard_max_s = max(base + 2.5, target + 2.5)
+        self._set_segment_target()
 
     def _watch_asr_speed(self, asr_s: float, dur: float) -> None:
         """Si la reconnaissance reste trop lente malgré des propositions
@@ -571,8 +583,8 @@ class Session:
                 if self._closed:
                     return
                 item = self._tts_q.popleft()
-            if item.epoch != self.epoch:
-                continue
+            if item.epoch != self.epoch or self.settings.voice_off:
+                continue  # périmé, ou préparation du doublage : aucune voix à produire
             self._busy_tts = True
             try:
                 rate, lag, boost = self._speech_rate(item)

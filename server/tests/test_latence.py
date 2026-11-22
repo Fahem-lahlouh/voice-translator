@@ -69,6 +69,14 @@ class TestVitesseVoix(unittest.TestCase):
         self.assertAlmostEqual(self.s._cps_ema["siwis"], 20.0, places=3)
 
 
+class TestPreparation(unittest.TestCase):
+    def test_option_sans_voix(self):
+        from vt_server.pipeline import parse_settings
+        self.assertTrue(parse_settings({"voiceOff": True}).voice_off)
+        with self.assertRaises(ValueError):
+            parse_settings({"voiceOff": "oui"})
+
+
 class TestFileVoix(unittest.TestCase):
     def test_estimation_et_recalage(self):
         s = session()
